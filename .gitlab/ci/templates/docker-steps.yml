@@ -1,0 +1,29 @@
+.docker:
+  image: docker:24
+  services:
+    - docker:24-dind
+  variables:
+    DOCKER_TLS_CERTDIR: "/certs"
+
+.push:
+  extends: .docker
+  stage: release
+  needs:
+    - job: build_main
+      artifacts: true
+  before_script:
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_JOB_TOKEN" "$CI_REGISTRY"
+  script:
+    - |
+      set -euo pipefail
+      IMG="${CI_REGISTRY_IMAGE}"
+      docker build -f src/main/docker/Dockerfile.jvm \
+        -t "${IMG}:${CI_PIPELINE_IID}" \
+        -t "${IMG}:${CI_COMMIT_SHORT_SHA}" \
+        -t "${IMG}:latest" \
+        .
+      docker push "${IMG}:${CI_PIPELINE_IID}"
+      docker push "${IMG}:${CI_COMMIT_SHORT_SHA}"
+      docker push "${IMG}:latest"
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "push"

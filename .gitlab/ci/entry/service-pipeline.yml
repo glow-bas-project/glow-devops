@@ -1,0 +1,26 @@
+include:
+  - local: "/.gitlab/ci/variables/defaults.yml"
+  - local: "/.gitlab/ci/templates/java-steps.yml"
+  - local: "/.gitlab/ci/templates/docker-steps.yml"
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+stages:
+  - build
+  - test
+  - release
+
+build:
+  extends: .build
+
+test:
+  extends: .test
+
+build_main:
+  extends: .build_main
+
+push:
+  extends: .push

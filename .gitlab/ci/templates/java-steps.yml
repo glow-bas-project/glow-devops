@@ -1,0 +1,48 @@
+.jdk_base:
+  image: eclipse-temurin:25-jdk
+  variables:
+    GRADLE_USER_HOME: "$CI_PROJECT_DIR/.gradle"
+  before_script:
+    - chmod +x ./gradlew
+  cache:
+    key:
+      files:
+        - gradle/wrapper/gradle-wrapper.properties
+    paths:
+      - .gradle/caches
+      - .gradle/wrapper
+
+.build:
+  extends: .jdk_base
+  stage: build
+  script:
+    - ./gradlew assemble
+  artifacts:
+    paths:
+      - build/
+    expire_in: 1 hour
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+.test:
+  extends: .jdk_base
+  stage: test
+  needs:
+    - job: build
+      artifacts: true
+  script:
+    - ./gradlew test
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+.build_main:
+  extends: .jdk_base
+  stage: build
+  script:
+    - ./gradlew build -x test
+  artifacts:
+    paths:
+      - build/quarkus-app/
+    expire_in: 1 hour
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "push"
