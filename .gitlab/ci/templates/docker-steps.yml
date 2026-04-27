@@ -4,26 +4,78 @@
     - docker:24-dind
   variables:
     DOCKER_TLS_CERTDIR: "/certs"
+    DOCKER_BUILDKIT: "1"
 
 .push:
   extends: .docker
   stage: release
+  resource_group: "${CI_PROJECT_PATH}-image-publish"
   needs:
     - job: build_main
       artifacts: true
+  artifacts:
+    reports:
+      dotenv: image.env
   before_script:
     - docker login -u "$CI_REGISTRY_USER" -p "$CI_JOB_TOKEN" "$CI_REGISTRY"
   script:
     - |
       set -euo pipefail
       IMG="${CI_REGISTRY_IMAGE}"
-      docker build -f src/main/docker/Dockerfile.jvm \
-        -t "${IMG}:${CI_PIPELINE_IID}" \
-        -t "${IMG}:${CI_COMMIT_SHORT_SHA}" \
-        -t "${IMG}:latest" \
+      IMMUTABLE_TAG_PIPELINE="${IMG}:${CI_PIPELINE_IID}"
+      IMMUTABLE_TAG_SHA="${IMG}:${CI_COMMIT_SHA}"
+      SHORT_TAG_SHA="${IMG}:${CI_COMMIT_SHORT_SHA}"
+      LATEST_TAG="${IMG}:latest"
+
+      docker run --privileged --rm tonistiigi/binfmt:qemu-v8.1.5 --install arm64
+      docker buildx create --name glow-builder --driver docker-container --use
+      docker buildx inspect --bootstrap
+
+      docker buildx build -f src/main/docker/Dockerfile.jvm \
+        --platform linux/amd64,linux/arm64 \
+        --tag "${IMMUTABLE_TAG_PIPELINE}" \
+        --tag "${IMMUTABLE_TAG_SHA}" \
+        --tag "${SHORT_TAG_SHA}" \
+        --tag "${LATEST_TAG}" \
+        --push \
         .
-      docker push "${IMG}:${CI_PIPELINE_IID}"
-      docker push "${IMG}:${CI_COMMIT_SHORT_SHA}"
-      docker push "${IMG}:latest"
+
+      verify_manifest() {
+        local tag="$1"
+        docker buildx imagetools inspect "${tag}" >/dev/null
+      }
+
+      verify_platforms() {
+        local tag="$1"
+        local inspect_output
+        inspect_output="$(docker buildx imagetools inspect "${tag}")"
+        echo "${inspect_output}" | grep -q "linux/amd64"
+        echo "${inspect_output}" | grep -q "linux/arm64"
+      }
+
+      verify_manifest "${IMMUTABLE_TAG_PIPELINE}"
+      verify_manifest "${IMMUTABLE_TAG_SHA}"
+      verify_manifest "${SHORT_TAG_SHA}"
+      verify_manifest "${LATEST_TAG}"
+
+      verify_platforms "${IMMUTABLE_TAG_PIPELINE}"
+      verify_platforms "${IMMUTABLE_TAG_SHA}"
+      verify_platforms "${SHORT_TAG_SHA}"
+      verify_platforms "${LATEST_TAG}"
+
+      DIGEST="$(docker buildx imagetools inspect "${IMMUTABLE_TAG_SHA}" | awk '/Digest:/ { print $2; exit }')"
+      if [[ -z "${DIGEST}" ]]; then
+        echo "Could not resolve image digest for ${IMMUTABLE_TAG_SHA}"
+        exit 1
+      fi
+
+      {
+        echo "IMAGE_NAME=${IMG}"
+        echo "IMAGE_TAG_PIPELINE=${CI_PIPELINE_IID}"
+        echo "IMAGE_TAG_COMMIT_SHA=${CI_COMMIT_SHA}"
+        echo "IMAGE_TAG_COMMIT_SHORT_SHA=${CI_COMMIT_SHORT_SHA}"
+        echo "IMAGE_DIGEST=${DIGEST}"
+        echo "IMAGE_REF_BY_DIGEST=${IMG}@${DIGEST}"
+      } > image.env
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "push"

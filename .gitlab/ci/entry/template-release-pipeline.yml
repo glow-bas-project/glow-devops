@@ -1,0 +1,37 @@
+include:
+  - local: "/.gitlab/ci/variables/defaults.yml"
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "push"
+
+stages:
+  - validate
+  - release
+
+validate_ci_version:
+  stage: validate
+  image: alpine:3.20
+  variables:
+    GIT_STRATEGY: fetch
+  before_script:
+    - apk add --no-cache bash git
+  script:
+    - ./scripts/ci/validate-ci-version.sh
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "push"
+
+tag_ci_version:
+  stage: release
+  image: alpine:3.20
+  resource_group: "${CI_PROJECT_PATH}-ci-tag"
+  variables:
+    GIT_STRATEGY: fetch
+  before_script:
+    - apk add --no-cache bash git
+  script:
+    - ./scripts/ci/create-ci-version-tag.sh
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "push"

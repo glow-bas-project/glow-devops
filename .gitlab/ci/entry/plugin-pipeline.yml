@@ -1,0 +1,32 @@
+include:
+  - local: "/.gitlab/ci/variables/defaults.yml"
+  - local: "/.gitlab/ci/templates/plugin-steps.yml"
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+stages:
+  - validate
+  - test
+  - version_guard
+  - publish
+
+plugin_validate:
+  extends: .plugin_validate
+
+plugin_test:
+  extends: .plugin_test
+
+plugin_version_guard_mr:
+  extends: .plugin_version_guard_mr
+
+plugin_version_guard_main:
+  extends: .plugin_version_guard_main
+
+plugin_publish_local_smoke:
+  extends: .plugin_publish_local_smoke
+
+plugin_publish_main:
+  extends: .plugin_publish_main
