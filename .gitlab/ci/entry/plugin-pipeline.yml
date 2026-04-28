@@ -13,29 +13,26 @@ stages:
   - version_guard
   - publish
 
-variables:
-  PLUGIN_GRADLE_IMAGE: ${PLUGIN_GRADLE_IMAGE:-gradle:8.13-jdk21}
-
 plugin_validate:
   extends: .plugin_validate
-  image: ${PLUGIN_GRADLE_IMAGE}
+  image: $PLUGIN_GRADLE_IMAGE
 
 plugin_test:
   extends: .plugin_test
-  image: ${PLUGIN_GRADLE_IMAGE}
+  image: $PLUGIN_GRADLE_IMAGE
 
 plugin_version_guard_mr:
   extends: .plugin_version_guard_mr
-  image: ${PLUGIN_GRADLE_IMAGE}
+  image: $PLUGIN_GRADLE_IMAGE
 
 plugin_version_guard_main:
   extends: .plugin_version_guard_main
-  image: ${PLUGIN_GRADLE_IMAGE}
+  image: $PLUGIN_GRADLE_IMAGE
 
 plugin_publish_local_smoke:
   extends: .plugin_publish_local_smoke
-  image: ${PLUGIN_GRADLE_IMAGE}
+  image: $PLUGIN_GRADLE_IMAGE
 
 plugin_publish_main:
   extends: .plugin_publish_main
-  image: ${PLUGIN_GRADLE_IMAGE}
+  image: $PLUGIN_GRADLE_IMAGE
