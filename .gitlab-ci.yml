@@ -1,0 +1,2 @@
+include:
+  - local: "/.gitlab/ci/entry/template-release-pipeline.yml"
