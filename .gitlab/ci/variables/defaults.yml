@@ -1,3 +1,4 @@
 variables:
   GRADLE_OPTS: "-Dorg.gradle.daemon=false"
   DOCKER_DRIVER: overlay2
+  PLUGIN_GRADLE_IMAGE: "gradle:8.13-jdk21"
