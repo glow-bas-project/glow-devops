@@ -1,0 +1,12 @@
+# Static Traefik config for glow-traefik (HTTP only, local Compose).
+# Routes are defined via Docker labels on compose services.
+
+entryPoints:
+  web:
+    address: ":80"
+
+providers:
+  docker:
+    endpoint: "unix:///var/run/docker.sock"
+    exposedByDefault: false
+    network: glow-local

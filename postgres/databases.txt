@@ -1,0 +1,9 @@
+# One database name per line (keep in sync with init/00-databases.sql)
+keycloak
+glow_restaurant
+glow_user
+glow_order
+glow_cart
+glow_courier
+glow_menu
+glow_payment

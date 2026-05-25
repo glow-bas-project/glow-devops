@@ -1,0 +1,292 @@
+x-glow-java-env: &glow_java_env
+  JAVA_OPTS_APPEND: -Dquarkus.http.host=0.0.0.0
+  QUARKUS_LOG_CONSOLE_JSON: "false"
+  QUARKUS_HTTP_PORT: "8080"
+  QUARKUS_OIDC_AUTH_SERVER_URL: http://keycloak:8080/realms/glow-realm
+  QUARKUS_OIDC_TLS_VERIFICATION: none
+  QUARKUS_DATASOURCE_USERNAME: ${POSTGRES_USER}
+  QUARKUS_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+
+x-glow-traefik-common: &glow_traefik_common
+  traefik.enable: "true"
+  traefik.docker.network: glow-local
+
+
+x-glow-size-small: &glow_size_small
+  deploy:
+    resources:
+      limits:
+        memory: 600M
+
+x-glow-size-medium: &glow_size_medium
+  deploy:
+    resources:
+      limits:
+        memory: 1G
+
+x-glow-size-large: &glow_size_large
+  deploy:
+    resources:
+      limits:
+        memory: 1200M
+
+networks:
+  glow-local:
+    name: glow-local
+
+volumes:
+  glow-postgres-data:
+
+############################################################
+###################### Core Services #######################
+############################################################
+
+services:
+  glow-postgres:
+    <<: *glow_size_medium
+    container_name: glow-postgres
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - glow-postgres-data:/var/lib/postgresql/data
+      - ../postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - glow-local
+
+  glow-traefik:
+    <<: *glow_size_medium
+    container_name: glow-traefik
+    image: traefik:v3.3
+    ports:
+      - "${TRAEFIK_HTTP_PORT:-80}:80"
+    volumes:
+      - ./traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - glow-local
+
+  keycloak:
+    <<: *glow_size_medium
+    container_name: glow-keycloak
+    image: quay.io/keycloak/keycloak:26.0.8
+    command: start --import-realm
+    depends_on:
+      glow-postgres:
+        condition: service_healthy
+      glow-traefik:
+        condition: service_started
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://glow-postgres:5432/keycloak
+      KC_DB_USERNAME: ${POSTGRES_USER}
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD}
+      # Services use http://keycloak:8080; browsers use http://auth.localhost via glow-traefik.
+      KC_HOSTNAME: http://keycloak:8080
+      KC_HOSTNAME_ADMIN: http://${GLOW_EDGE_AUTH_HOST:-auth.localhost}
+      KC_HOSTNAME_STRICT: "false"
+      KC_HTTP_ENABLED: "true"
+    volumes:
+      - ../keycloak:/opt/keycloak/data/import
+    labels:
+      <<: *glow_traefik_common
+      traefik.http.routers.keycloak.rule: Host(`${GLOW_EDGE_AUTH_HOST:-auth.localhost}`)
+      traefik.http.routers.keycloak.entrypoints: web
+      traefik.http.services.keycloak.loadbalancer.server.port: "8080"
+    networks:
+      - glow-local
+
+#######################################################
+###################### Services #######################
+#######################################################
+
+  glow-restaurant:
+    <<: *glow_size_medium
+    image: ${SERVICE_IMAGE_REF:-${REGISTRY_PREFIX}/glow-restaurant-service:${IMAGE_TAG}}
+    container_name: ${COMPOSE_SERVICE_NAME:-glow-restaurant}
+    depends_on:
+      glow-postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+      glow-traefik:
+        condition: service_started
+    environment:
+      <<: *glow_java_env
+      QUARKUS_DATASOURCE_JDBC_URL: jdbc:postgresql://glow-postgres:5432/glow_restaurant
+    labels:
+      <<: *glow_traefik_common
+      traefik.http.routers.glow-restaurant.rule: Host(`${GLOW_EDGE_HOST:-localhost}`) && PathPrefix(`/restaurant`)
+      traefik.http.routers.glow-restaurant.entrypoints: web
+      traefik.http.middlewares.glow-restaurant-stripprefix.stripprefix.prefixes: /restaurant
+      traefik.http.routers.glow-restaurant.middlewares: glow-restaurant-stripprefix
+      traefik.http.services.glow-restaurant.loadbalancer.server.port: "8080"
+    networks:
+      - glow-local
+
+  glow-user:
+    <<: *glow_size_medium
+    image: ${SERVICE_IMAGE_REF:-${REGISTRY_PREFIX}/glow-user-service:${IMAGE_TAG}}
+    container_name: ${COMPOSE_SERVICE_NAME:-glow-user}
+    depends_on:
+      glow-postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+      glow-traefik:
+        condition: service_started
+    environment:
+      <<: *glow_java_env
+      QUARKUS_OIDC_CLIENT_ID: glow-user-service
+      QUARKUS_OIDC_CREDENTIALS_SECRET: ${GLOW_USER_OIDC_CLIENT_SECRET}
+      QUARKUS_DATASOURCE_JDBC_URL: jdbc:postgresql://glow-postgres:5432/glow_user
+    labels:
+      <<: *glow_traefik_common
+      traefik.http.routers.glow-user.rule: Host(`${GLOW_EDGE_HOST:-localhost}`) && PathPrefix(`/user`)
+      traefik.http.routers.glow-user.entrypoints: web
+      traefik.http.middlewares.glow-user-stripprefix.stripprefix.prefixes: /user
+      traefik.http.routers.glow-user.middlewares: glow-user-stripprefix
+      traefik.http.services.glow-user.loadbalancer.server.port: "8080"
+    networks:
+      - glow-local
+
+  glow-order:
+    <<: *glow_size_medium
+    image: ${SERVICE_IMAGE_REF:-${REGISTRY_PREFIX}/glow-order-service:${IMAGE_TAG}}
+    container_name: ${COMPOSE_SERVICE_NAME:-glow-order}
+    depends_on:
+      glow-postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+      glow-traefik:
+        condition: service_started
+    environment:
+      <<: *glow_java_env
+      QUARKUS_OIDC_CLIENT_ID: glow-order-service
+      QUARKUS_OIDC_CREDENTIALS_SECRET: ${GLOW_ORDER_OIDC_CLIENT_SECRET}
+      QUARKUS_DATASOURCE_JDBC_URL: jdbc:postgresql://glow-postgres:5432/glow_order
+    labels:
+      <<: *glow_traefik_common
+      traefik.http.routers.glow-order.rule: Host(`${GLOW_EDGE_HOST:-localhost}`) && PathPrefix(`/order`)
+      traefik.http.routers.glow-order.entrypoints: web
+      traefik.http.middlewares.glow-order-stripprefix.stripprefix.prefixes: /order
+      traefik.http.routers.glow-order.middlewares: glow-order-stripprefix
+      traefik.http.services.glow-order.loadbalancer.server.port: "8080"
+    networks:
+      - glow-local
+
+  glow-cart:
+    <<: *glow_size_medium
+    image: ${SERVICE_IMAGE_REF:-${REGISTRY_PREFIX}/glow-cart-service:${IMAGE_TAG}}
+    container_name: ${COMPOSE_SERVICE_NAME:-glow-cart}
+    depends_on:
+      glow-postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+      glow-traefik:
+        condition: service_started
+    environment:
+      <<: *glow_java_env
+      QUARKUS_OIDC_CLIENT_ID: glow-cart-service
+      QUARKUS_OIDC_CREDENTIALS_SECRET: ${GLOW_CART_OIDC_CLIENT_SECRET}
+      QUARKUS_DATASOURCE_JDBC_URL: jdbc:postgresql://glow-postgres:5432/glow_cart
+    labels:
+      <<: *glow_traefik_common
+      traefik.http.routers.glow-cart.rule: Host(`${GLOW_EDGE_HOST:-localhost}`) && PathPrefix(`/cart`)
+      traefik.http.routers.glow-cart.entrypoints: web
+      traefik.http.middlewares.glow-cart-stripprefix.stripprefix.prefixes: /cart
+      traefik.http.routers.glow-cart.middlewares: glow-cart-stripprefix
+      traefik.http.services.glow-cart.loadbalancer.server.port: "8080"
+    networks:
+      - glow-local
+
+  glow-courier:
+    <<: *glow_size_medium
+    image: ${SERVICE_IMAGE_REF:-${REGISTRY_PREFIX}/glow-courier-service:${IMAGE_TAG}}
+    container_name: ${COMPOSE_SERVICE_NAME:-glow-courier}
+    depends_on:
+      glow-postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+      glow-traefik:
+        condition: service_started
+    environment:
+      <<: *glow_java_env
+      QUARKUS_OIDC_CLIENT_ID: glow-courier-service
+      QUARKUS_OIDC_CREDENTIALS_SECRET: ${GLOW_COURIER_OIDC_CLIENT_SECRET}
+      QUARKUS_DATASOURCE_JDBC_URL: jdbc:postgresql://glow-postgres:5432/glow_courier
+    labels:
+      <<: *glow_traefik_common
+      traefik.http.routers.glow-courier.rule: Host(`${GLOW_EDGE_HOST:-localhost}`) && PathPrefix(`/courier`)
+      traefik.http.routers.glow-courier.entrypoints: web
+      traefik.http.middlewares.glow-courier-stripprefix.stripprefix.prefixes: /courier
+      traefik.http.routers.glow-courier.middlewares: glow-courier-stripprefix
+      traefik.http.services.glow-courier.loadbalancer.server.port: "8080"
+    networks:
+      - glow-local
+
+  glow-menu:
+    <<: *glow_size_medium
+    image: ${SERVICE_IMAGE_REF:-${REGISTRY_PREFIX}/glow-menu-service:${IMAGE_TAG}}
+    container_name: ${COMPOSE_SERVICE_NAME:-glow-menu}
+    depends_on:
+      glow-postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+      glow-traefik:
+        condition: service_started
+    environment:
+      <<: *glow_java_env
+      QUARKUS_OIDC_CLIENT_ID: glow-menu-service
+      QUARKUS_OIDC_CREDENTIALS_SECRET: ${GLOW_MENU_OIDC_CLIENT_SECRET}
+      QUARKUS_DATASOURCE_JDBC_URL: jdbc:postgresql://glow-postgres:5432/glow_menu
+    labels:
+      <<: *glow_traefik_common
+      traefik.http.routers.glow-menu.rule: Host(`${GLOW_EDGE_HOST:-localhost}`) && PathPrefix(`/menu`)
+      traefik.http.routers.glow-menu.entrypoints: web
+      traefik.http.middlewares.glow-menu-stripprefix.stripprefix.prefixes: /menu
+      traefik.http.routers.glow-menu.middlewares: glow-menu-stripprefix
+      traefik.http.services.glow-menu.loadbalancer.server.port: "8080"
+    networks:
+      - glow-local
+
+  glow-payment:
+    <<: *glow_size_medium
+    image: ${SERVICE_IMAGE_REF:-${REGISTRY_PREFIX}/glow-payment-service:${IMAGE_TAG}}
+    container_name: ${COMPOSE_SERVICE_NAME:-glow-payment}
+    depends_on:
+      glow-postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+      glow-traefik:
+        condition: service_started
+    environment:
+      <<: *glow_java_env
+      QUARKUS_OIDC_CLIENT_ID: glow-payment-service
+      QUARKUS_OIDC_CREDENTIALS_SECRET: ${GLOW_PAYMENT_OIDC_CLIENT_SECRET}
+      QUARKUS_DATASOURCE_JDBC_URL: jdbc:postgresql://glow-postgres:5432/glow_payment
+    labels:
+      <<: *glow_traefik_common
+      traefik.http.routers.glow-payment.rule: Host(`${GLOW_EDGE_HOST:-localhost}`) && PathPrefix(`/payment`)
+      traefik.http.routers.glow-payment.entrypoints: web
+      traefik.http.middlewares.glow-payment-stripprefix.stripprefix.prefixes: /payment
+      traefik.http.routers.glow-payment.middlewares: glow-payment-stripprefix
+      traefik.http.services.glow-payment.loadbalancer.server.port: "8080"
+    networks:
+      - glow-local
