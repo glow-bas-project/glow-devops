@@ -1,5 +1,108 @@
 # glow-devops
 
+## Docker Compose local stack
+
+The local compose setup is in `compose/docker-compose.yml` and the preferred startup helper is `scripts/compose-up.sh`.
+
+### Default workflow
+
+```bash
+./scripts/compose-up.sh
+```
+
+By default this script runs:
+1. `docker compose down`
+2. `docker compose pull`
+3. `docker compose up`
+
+### Registry authentication (required for private images)
+
+Before running the compose stack, authenticate Docker to the on-prem GitLab Container Registry.
+
+1. Create a GitLab Personal Access Token with `read_registry` scope.
+2. Login to the registry with your GitLab username and use the token as password:
+   ```bash
+   docker login registry.gitlab.au.dk -u <your-gitlab-username>
+   ```
+3. When prompted for password, paste the access token.
+
+You can validate access with:
+```bash
+docker pull registry.gitlab.au.dk/backend-architecture-and-scalability/glow-restaurant-service:latest
+```
+
+### Useful overrides
+
+- Pin a specific remote tag for all services in one run:
+  ```bash
+  ./scripts/compose-up.sh --tag 1234
+  ```
+- Override one service image with a locally built Gradle image:
+  ```bash
+  ./scripts/compose-up.sh --image glow-restaurant-service:local glow-restaurant
+  ```
+- Restart **one** service without stopping others (no `compose down`):
+  ```bash
+  ./scripts/compose-up.sh glow-user
+  ```
+  Passing a service name only pulls/starts that service; `glow-restaurant` and the rest stay running.
+
+Create **`glow-devops/compose/.env`** before running the stack (required):
+
+```bash
+cp compose/.env.example compose/.env
+```
+
+Set variables from `compose/.env.example` (Postgres, registry, edge proxy, OIDC secrets). `./scripts/compose-up.sh` exits if `.env` is missing. **Connection strings and secrets live in `compose/docker-compose.yml` + `.env`**, not in service repos — see [`compose/README.md`](compose/README.md).
+
+Add `127.0.0.1 auth.localhost` to your hosts file for Keycloak (see [`compose/traefik/README.md`](compose/traefik/README.md)).
+
+### Naming (compose vs registry)
+
+- **Compose service key:** short name, e.g. `glow-restaurant`
+- **Registry image repo:** same name + `-service`, e.g. `glow-restaurant-service` (matches GitLab `CI_REGISTRY_IMAGE`)
+
+### Local development with `glowBuild` (service repos)
+
+| Step | Command | Purpose |
+|------|---------|---------|
+| Shared env | `cp compose/.env.example compose/.env` (set `GLOW_USER_OIDC_CLIENT_SECRET`, etc.) | Required for compose and Gradle |
+| Postgres + DBs | `./scripts/ensure-postgres.sh` | Start Postgres; create DBs from `postgres/databases.txt` |
+| Run your service | `cd <service-repo> && ./gradlew glowBuild` | `quarkusBuild` → local Docker image → compose up **this** service only |
+
+`glowBuild` does **not** run Postgres init or `ensure-databases.sh`. After you add a database or service to compose, run **`./scripts/ensure-postgres.sh`** once (safe to repeat).
+
+**One-time full stack** (optional; pulls registry images, runs `down`):
+
+```bash
+export GLOW_HOME="/path/to/code"
+cp compose/.env.example compose/.env
+./scripts/compose-up.sh
+```
+
+**Day-to-day in e.g. `glow-restaurant`:**
+
+```bash
+cd glow-restaurant
+./gradlew glowBuild
+```
+
+Uses a **local** image (`glow-restaurant-service:local`) — no registry image required. Restaurant API: **`http://localhost/restaurant/`** (via `glow-traefik`). Requires `com.glow.local-env` and `GLOW_HOME`; see `glow-gradle-plugin` README.
+
+### New service (compose + DB defined, image not in registry yet)
+
+1. Update `postgres/databases.txt` and `postgres/init/00-databases.sql`, then add the service in `compose/docker-compose.yml`.
+2. `./scripts/ensure-postgres.sh` — creates the new database on existing Postgres.
+3. `cd <new-service-repo> && ./gradlew glowBuild` — builds and starts only that service; Compose starts Postgres/Keycloak via `depends_on` if needed.
+
+Do **not** rely on `./scripts/compose-up.sh <new-service>` with default **pull** until the image exists in the registry. Use `glowBuild` or `compose-up.sh --no-pull --image <name>:local <service>`.
+
+### Postgres helpers
+
+- **`./scripts/ensure-postgres.sh`** — Postgres up + idempotent DB ensure (use with `glowBuild`).
+- **`./scripts/compose-up.sh --postgres-only`** — same as `ensure-postgres.sh`.
+- See `postgres/README.md` for adding databases and init vs ensure behavior.
+
 # Keycloak
 
 ## 1. Setting up Keycloak locally
@@ -23,11 +126,14 @@ Once Docker Desktop is installed, make sure it is **running** before proceeding
 
 ### Steps
 
-1. Clone the `glow-devops` repository and open a terminal in its root directory 
-   (where `docker-compose.yml` is located)
-2. Run Keycloak:
+1. Clone the `glow-devops` repository and open a terminal in its root directory
+2. Start the local stack (Keycloak + services):
 ```bash
-   docker compose up
+   ./scripts/compose-up.sh
+```
+   Or Keycloak only:
+```bash
+   ./scripts/compose-up.sh keycloak
 ```
    Wait until you see `Keycloak 26.0.8 ... started` in the terminal output before 
    proceeding. First run will take longer as Docker pulls the image.
@@ -43,7 +149,7 @@ Once Docker Desktop is installed, make sure it is **running** before proceeding
 ## 2. Keycloak setup details
 
 - **Image**: `quay.io/keycloak/keycloak:26.0.8`
-- **Mode**: `start-dev` (development only – no TLS, embedded H2 database)
+- **Mode**: `start --import-realm` (local HTTP, no strict hostname; Postgres on `glow-postgres`, database `keycloak`)
 - **Admin credentials**: `admin / admin` (local dev only, never used in production)
 - **Realm**: `glow-realm`
 - **Roles**: `CUSTOMER`, `COURIER`, `RESTAURANT_USER`, `SYSADMIN`
@@ -53,12 +159,12 @@ Once Docker Desktop is installed, make sure it is **running** before proceeding
 
 ## 3. Running Keycloak locally
 
-Keycloak will be available at http://localhost:8080. The realm, roles, and clients are 
-imported automatically from _keycloak/realm-export.json_. No manual admin UI configuration 
-is needed after the initial setup.
+Keycloak is available at **http://auth.localhost** (via `glow-traefik` on port 80). Add `127.0.0.1 auth.localhost` to your hosts file. The realm, roles, and clients are imported automatically from _keycloak/realm-export.json_. No manual admin UI configuration is needed after the initial setup.
 
-Admin console: http://localhost:8080/admin (`admin / admin`)  
-Token endpoint: `http://localhost:8080/realms/glow-realm/protocol/openid-connect/token`
+Admin console: http://auth.localhost/admin (`admin / admin`)  
+Token endpoint: `http://auth.localhost/realms/glow-realm/protocol/openid-connect/token`
+
+Java APIs use path prefixes on `http://localhost` (e.g. `http://localhost/restaurant/`, `http://localhost/user/`). See [`compose/traefik/README.md`](compose/traefik/README.md).
 
 ### Verifying the setup (Optional)
 
@@ -66,7 +172,7 @@ Request a token for the test user. Note the OS difference in curl usage:
 
 **Windows (PowerShell):**
 ```powershell
-curl.exe -X POST http://localhost:8080/realms/glow-realm/protocol/openid-connect/token `
+curl.exe -X POST http://auth.localhost/realms/glow-realm/protocol/openid-connect/token `
   -H "Content-Type: application/x-www-form-urlencoded" `
   -d "grant_type=password" `
   -d "client_id=glow-frontend" `
@@ -76,7 +182,7 @@ curl.exe -X POST http://localhost:8080/realms/glow-realm/protocol/openid-connect
 
 **macOS (Terminal):**
 ```bash
-curl -X POST http://localhost:8080/realms/glow-realm/protocol/openid-connect/token \
+curl -X POST http://auth.localhost/realms/glow-realm/protocol/openid-connect/token \
   -H "Content-Type: application/x-www-form-urlencoded" \
   -d "grant_type=password" \
   -d "client_id=glow-frontend" \
