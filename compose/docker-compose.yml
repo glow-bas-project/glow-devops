@@ -290,3 +290,18 @@ services:
       traefik.http.services.glow-payment.loadbalancer.server.port: "8080"
     networks:
       - glow-local
+
+  glow-ui:
+    <<: *glow_size_small
+    image: ${SERVICE_IMAGE_REF:-${REGISTRY_PREFIX}/glow-ui:${IMAGE_TAG}}
+    container_name: glow-ui
+    depends_on:
+      glow-traefik:
+        condition: service_started
+    labels:
+      <<: *glow_traefik_common
+      traefik.http.routers.glow-ui.rule: Host(`${GLOW_EDGE_HOST:-localhost}`) && PathPrefix(`/ui`)
+      traefik.http.routers.glow-ui.entrypoints: web
+      traefik.http.services.glow-ui.loadbalancer.server.port: "80"
+    networks:
+      - glow-local
