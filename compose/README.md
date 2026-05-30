@@ -36,6 +36,7 @@ If `GLOW_USER_OIDC_CLIENT_SECRET` is empty, the container still starts but OIDC 
 | Traffic | URL (port 80) |
 |---------|----------------|
 | Keycloak admin / OIDC from host | `http://auth.localhost/...` |
+| Frontend UI | `http://localhost/ui` |
 | Java APIs from host | `http://localhost/<path>/...` (e.g. `/restaurant`, `/user`) |
 
 Postgres stays on `localhost:5432`. App containers are not published on `8080`–`8087` anymore.
