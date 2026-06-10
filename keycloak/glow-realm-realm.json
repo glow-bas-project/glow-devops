@@ -6,35 +6,83 @@
   "accessTokenLifespanForImplicitFlow": 900,
   "actionTokenGeneratedByAdminLifespan": 43200,
   "actionTokenGeneratedByUserLifespan": 300,
-  "adminEventsDetailsEnabled": false,
-  "adminEventsEnabled": false,
-  "adminPermissionsEnabled": false,
-  "attributes": {
-    "cibaAuthRequestedUserHint": "login_hint",
-    "cibaBackchannelTokenDeliveryMode": "poll",
-    "cibaExpiresIn": "120",
-    "cibaInterval": "5",
-    "clientOfflineSessionIdleTimeout": "0",
-    "clientOfflineSessionMaxLifespan": "0",
-    "clientSessionIdleTimeout": "0",
-    "clientSessionMaxLifespan": "0",
-    "oauth2DeviceCodeLifespan": "600",
-    "oauth2DevicePollingInterval": "5",
-    "parRequestUriLifespan": "60",
-    "realmReusableOtpCode": "false",
-    "scimApiEnabled": "false"
-  },
-  "authenticationFlows": [
-    {
-      "alias": "Account verification options",
-      "authenticationExecutions": [
-        {
-          "authenticator": "idp-email-verification",
-          "authenticatorFlow": false,
-          "autheticatorFlow": false,
-          "priority": 10,
-          "requirement": "ALTERNATIVE",
-          "userSetupAllowed": false
+  "oauth2DeviceCodeLifespan": 600,
+  "oauth2DevicePollingInterval": 5,
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": true,
+  "registrationEmailAsUsername": true,
+  "rememberMe": false,
+  "verifyEmail": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": false,
+  "editUsernameAllowed": false,
+  "bruteForceProtected": false,
+  "permanentLockout": false,
+  "maxTemporaryLockouts": 0,
+  "bruteForceStrategy": "MULTIPLE",
+  "maxFailureWaitSeconds": 900,
+  "minimumQuickLoginWaitSeconds": 60,
+  "waitIncrementSeconds": 60,
+  "quickLoginCheckMilliSeconds": 1000,
+  "maxDeltaTimeSeconds": 43200,
+  "failureFactor": 30,
+  "roles": {
+    "realm": [
+      {
+        "id": "2ca272bd-a292-42c2-9083-bf811c364abb",
+        "name": "COURIER",
+        "description": "",
+        "composite": false,
+        "clientRole": false,
+        "containerId": "03119638-4c1f-4c94-b4ba-cef945a25f4e",
+        "attributes": {}
+      },
+      {
+        "id": "c5d334c9-1fa6-4424-bad8-f32ba7eef7f9",
+        "name": "SYSADMIN",
+        "description": "",
+        "composite": false,
+        "clientRole": false,
+        "containerId": "03119638-4c1f-4c94-b4ba-cef945a25f4e",
+        "attributes": {}
+      },
+      {
+        "id": "c75b13ec-858d-46ac-ba7e-ace59f9c1c02",
+        "name": "uma_authorization",
+        "description": "${role_uma_authorization}",
+        "composite": false,
+        "clientRole": false,
+        "containerId": "03119638-4c1f-4c94-b4ba-cef945a25f4e",
+        "attributes": {}
+      },
+      {
+        "id": "8f61fa45-ac8a-41bd-9937-b0c8b4f80e79",
+        "name": "offline_access",
+        "description": "${role_offline-access}",
+        "composite": false,
+        "clientRole": false,
+        "containerId": "03119638-4c1f-4c94-b4ba-cef945a25f4e",
+        "attributes": {}
+      },
+      {
+        "id": "8c536d0e-8178-4e4d-b849-da33e808a1f6",
+        "name": "default-roles-glow-realm",
+        "description": "${role_default-roles}",
+        "composite": true,
+        "composites": {
+          "realm": [
+            "CUSTOMER",
+            "offline_access",
+            "uma_authorization"
+          ],
+          "client": {
+            "account": [
+              "manage-account",
+              "view-profile"
+            ]
+          }
         },
         {
           "authenticatorFlow": true,
