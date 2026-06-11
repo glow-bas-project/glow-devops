@@ -23,11 +23,54 @@ Edit `compose/.env` and set at least:
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` | Postgres, Keycloak DB, Quarkus datasource |
 | `REGISTRY_PREFIX` / `IMAGE_TAG` | Default image when not using `glowBuild` local tag |
 | `TRAEFIK_HTTP_PORT` / `GLOW_EDGE_HOST` / `GLOW_EDGE_AUTH_HOST` | Edge proxy (defaults usually fine) |
-| `GLOW_USER_OIDC_CLIENT_SECRET` | Keycloak client secret for `glow-user-service` |
+| `GLOW_*_OIDC_CLIENT_SECRET` | OIDC client secrets (see [Keycloak](#keycloak)) |
 
-Get the OIDC secret from Keycloak admin: `http://auth.localhost/admin` → realm `glow-realm` → Clients → `glow-user-service` → Credentials.
+Run `./scripts/ensure-oidc-secrets.sh` to generate OIDC secrets in `compose/.env` before first start.
 
-If `GLOW_USER_OIDC_CLIENT_SECRET` is empty, the container still starts but OIDC fails.
+## Keycloak
+
+**Image:** `quay.io/keycloak/keycloak:26.6`  
+**Realm:** `glow-realm` — config in [`keycloak/glow-realm-realm.json`](../keycloak/glow-realm-realm.json)  
+**Admin:** http://auth.localhost/admin (`admin` / `admin`, local dev only)
+
+Client secrets live in `compose/.env` (not in git). Confidential clients are listed in [`keycloak/client-secrets.yaml`](../keycloak/client-secrets.yaml) (`clientId` → env var). The realm JSON uses `${GLOW_*_OIDC_CLIENT_SECRET}` placeholders; Keycloak and Quarkus services read the same values.
+
+### New developer setup
+
+```bash
+cp compose/.env.example compose/.env
+./scripts/ensure-oidc-secrets.sh
+./scripts/compose-up.sh keycloak
+```
+
+On first boot, `--import-realm` imports `glow-realm-realm.json` when the realm does not exist yet. No manual copy of secrets from the admin UI is required.
+
+### Export realm (after admin UI changes)
+
+```bash
+./scripts/export-keycloak-realm.sh
+git diff keycloak/glow-realm-realm.json
+```
+
+Optional: `--include-users` writes `keycloak/glow-realm-users-0.json` for dev seeding (not committed by default).
+
+### Import realm (apply git changes)
+
+```bash
+./scripts/import-keycloak-realm.sh
+```
+
+| Flag | Purpose |
+|------|---------|
+| `--strategy skip` (default) | Add new clients/roles; leave existing unchanged |
+| `--strategy overwrite` | Replace clients/roles from JSON; existing users untouched |
+| `--with-users [file]` | Import users with SKIP (never overwrites existing accounts) |
+
+After `./scripts/ensure-oidc-secrets.sh --rotate`, run import with `--strategy overwrite`.
+
+Run any script with `help` for full options, e.g. `./scripts/import-keycloak-realm.sh help`.
+
+**Fallback:** copy a client secret from admin UI → `compose/.env` only if env-based import was skipped.
 
 ## Edge proxy (`glow-traefik`)
 

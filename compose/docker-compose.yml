@@ -78,7 +78,7 @@ services:
   keycloak:
     <<: *glow_size_medium
     container_name: glow-keycloak
-    image: quay.io/keycloak/keycloak:26.0.8
+    image: quay.io/keycloak/keycloak:26.6
     command: start --import-realm
     depends_on:
       glow-postgres:
@@ -92,11 +92,17 @@ services:
       KC_DB_URL: jdbc:postgresql://glow-postgres:5432/keycloak
       KC_DB_USERNAME: ${POSTGRES_USER}
       KC_DB_PASSWORD: ${POSTGRES_PASSWORD}
-      # Services use http://keycloak:8080; browsers use http://auth.localhost via glow-traefik.
-      KC_HOSTNAME: http://keycloak:8080
-      KC_HOSTNAME_ADMIN: http://${GLOW_EDGE_AUTH_HOST:-auth.localhost}
+      KC_HOSTNAME: http://auth.localhost
+      KC_HOSTNAME_ADMIN: http://auth.localhost
       KC_HOSTNAME_STRICT: "false"
       KC_HTTP_ENABLED: "true"
+      GLOW_USER_OIDC_CLIENT_SECRET: ${GLOW_USER_OIDC_CLIENT_SECRET}
+      GLOW_RESTAURANT_OIDC_CLIENT_SECRET: ${GLOW_RESTAURANT_OIDC_CLIENT_SECRET}
+      GLOW_ORDER_OIDC_CLIENT_SECRET: ${GLOW_ORDER_OIDC_CLIENT_SECRET}
+      GLOW_CART_OIDC_CLIENT_SECRET: ${GLOW_CART_OIDC_CLIENT_SECRET}
+      GLOW_COURIER_OIDC_CLIENT_SECRET: ${GLOW_COURIER_OIDC_CLIENT_SECRET}
+      GLOW_MENU_OIDC_CLIENT_SECRET: ${GLOW_MENU_OIDC_CLIENT_SECRET}
+      GLOW_PAYMENT_OIDC_CLIENT_SECRET: ${GLOW_PAYMENT_OIDC_CLIENT_SECRET}
     volumes:
       - ../keycloak:/opt/keycloak/data/import
     labels:
