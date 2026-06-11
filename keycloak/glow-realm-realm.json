@@ -3248,12 +3248,12 @@
         "composites": {
           "client": {
             "account": [
-              "CUSTOMER",
               "manage-account",
               "view-profile"
             ]
           },
           "realm": [
+            "CUSTOMER",
             "offline_access",
             "uma_authorization"
           ]
