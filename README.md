@@ -127,7 +127,12 @@ Once Docker Desktop is installed, make sure it is **running** before proceeding
 ### Steps
 
 1. Clone the `glow-devops` repository and open a terminal in its root directory
-2. Start the local stack (Keycloak + services):
+2. Copy env and generate OIDC secrets:
+```bash
+   cp compose/.env.example compose/.env
+   ./scripts/ensure-oidc-secrets.sh
+```
+3. Start the local stack (Keycloak + services):
 ```bash
    ./scripts/compose-up.sh
 ```
@@ -135,12 +140,11 @@ Once Docker Desktop is installed, make sure it is **running** before proceeding
 ```bash
    ./scripts/compose-up.sh keycloak
 ```
-   Wait until you see `Keycloak 26.0.8 ... started` in the terminal output before 
+   Wait until you see `Keycloak 26.6 ... started` in the terminal output before 
    proceeding. First run will take longer as Docker pulls the image.
 
-3. The realm, roles, and clients are imported automatically from 
-   `keycloak/realm-export.json` – no manual admin UI configuration is needed.
-4. Verify the setup by requesting a test token (see Section 3).
+4. The realm, roles, and clients are imported from `keycloak/glow-realm-realm.json` on first boot – no manual admin UI configuration is needed.
+5. Verify the setup by requesting a test token (see Section 3).
 
 > **Note:** `glow-devops` contains shared infrastructure only. Each microservice 
 > has its own repository and connects to this locally running Keycloak instance 
@@ -148,18 +152,33 @@ Once Docker Desktop is installed, make sure it is **running** before proceeding
 
 ## 2. Keycloak setup details
 
-- **Image**: `quay.io/keycloak/keycloak:26.0.8`
+- **Image**: `quay.io/keycloak/keycloak:26.6`
 - **Mode**: `start --import-realm` (local HTTP, no strict hostname; Postgres on `glow-postgres`, database `keycloak`)
 - **Admin credentials**: `admin / admin` (local dev only, never used in production)
 - **Realm**: `glow-realm`
 - **Roles**: `CUSTOMER`, `COURIER`, `RESTAURANT_USER`, `SYSADMIN`
 - **Clients**: `glow-frontend` (public), `glow-user-service` (confidential)
-- **Realm config**: committed to `keycloak/realm-export.json`, auto-imported on 
-  container startup via `--import-realm`
+- **Realm config**: committed to `keycloak/glow-realm-realm.json`, auto-imported on 
+  first startup via `--import-realm`; updates via `./scripts/import-keycloak-realm.sh`
+- **OIDC secrets**: `compose/.env` (generate with `./scripts/ensure-oidc-secrets.sh`)
+
+### Staging and production (contract)
+
+| Concern | Local | Staging / Prod |
+|---------|-------|----------------|
+| Secret storage | `compose/.env` | K8s Secret / GitLab protected CI variables (`GLOW_*_OIDC_CLIENT_SECRET`) |
+| Keycloak env | `docker-compose.yml` | Deployment `envFrom` / secret refs |
+| Realm config | `keycloak/glow-realm-realm.json` in git | Same file; CI runs `import-keycloak-realm.sh` |
+| Keycloak image | `quay.io/keycloak/keycloak:26.6` | Same tag |
+| Bootstrap | `--import-realm` or import script | `kc.sh import` on empty DB, or Operator `KeycloakRealmImport` with placeholders |
+| Updates | `import-keycloak-realm.sh` (SKIP) | Same script; never `import --override` on live DB with real users |
+| Rotation | `ensure-oidc-secrets.sh --rotate` + overwrite import | Update vault/CI secret → redeploy Keycloak → import overwrite |
+
+Realm JSON never contains real secrets. User data in staging/prod is never wiped by import. See [`compose/README.md`](compose/README.md#keycloak) for export/import workflows.
 
 ## 3. Running Keycloak locally
 
-Keycloak is available at **http://auth.localhost** (via `glow-traefik` on port 80). Add `127.0.0.1 auth.localhost` to your hosts file. The realm, roles, and clients are imported automatically from _keycloak/realm-export.json_. No manual admin UI configuration is needed after the initial setup.
+Keycloak is available at **http://auth.localhost** (via `glow-traefik` on port 80). Add `127.0.0.1 auth.localhost` to your hosts file. Run `./scripts/ensure-oidc-secrets.sh` before first start. The realm is imported from _keycloak/glow-realm-realm.json_. No manual admin UI configuration is needed after the initial setup.
 
 Admin console: http://auth.localhost/admin (`admin / admin`)  
 Token endpoint: `http://auth.localhost/realms/glow-realm/protocol/openid-connect/token`
