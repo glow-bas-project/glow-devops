@@ -1,0 +1,5 @@
+# Maps Keycloak clientId -> compose/.env variable for rootUrl placeholder restoration on export.
+clients:
+  account: authBaseUrl
+  account-console: authBaseUrl
+  security-admin-console: authAdminUrl

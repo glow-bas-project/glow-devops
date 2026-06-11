@@ -164,9 +164,11 @@ main() {
     fi
   else
     local import_dir="${tmpdir}/import-dir"
+    local realm_stripped="${tmpdir}/bootstrap-realm-stripped.json"
     local realm_copy="${import_dir}/${KEYCLOAK_REALM}-realm.json"
     mkdir -p "${import_dir}"
-    strip_users_from_realm_file "${KEYCLOAK_REALM_FILE}" "${realm_copy}"
+    strip_users_from_realm_file "${KEYCLOAK_REALM_FILE}" "${realm_stripped}"
+    substitute_env_placeholders "${realm_stripped}" "${realm_copy}"
     bootstrap_import "${import_dir}"
   fi
 
