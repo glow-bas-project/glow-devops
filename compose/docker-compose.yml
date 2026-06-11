@@ -2,7 +2,8 @@ x-glow-java-env: &glow_java_env
   JAVA_OPTS_APPEND: -Dquarkus.http.host=0.0.0.0
   QUARKUS_LOG_CONSOLE_JSON: "false"
   QUARKUS_HTTP_PORT: "8080"
-  QUARKUS_OIDC_AUTH_SERVER_URL: http://keycloak:8080/realms/glow-realm
+  QUARKUS_OIDC_AUTH_SERVER_URL: http://keycloak:8080${GLOW_AUTH_PATH:-/auth}/realms/glow-realm
+  QUARKUS_OIDC_TOKEN_ISSUER: ${authBaseUrl}/realms/glow-realm
   QUARKUS_OIDC_TLS_VERIFICATION: none
   QUARKUS_DATASOURCE_USERNAME: ${POSTGRES_USER}
   QUARKUS_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
@@ -92,10 +93,14 @@ services:
       KC_DB_URL: jdbc:postgresql://glow-postgres:5432/keycloak
       KC_DB_USERNAME: ${POSTGRES_USER}
       KC_DB_PASSWORD: ${POSTGRES_PASSWORD}
-      KC_HOSTNAME: http://auth.localhost
-      KC_HOSTNAME_ADMIN: http://auth.localhost
-      KC_HOSTNAME_STRICT: "false"
+      KC_HOSTNAME: ${authBaseUrl}
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+      KC_HTTP_RELATIVE_PATH: ${GLOW_AUTH_PATH:-/auth}
+      GLOW_AUTH_PATH: ${GLOW_AUTH_PATH:-/auth}
+      KC_PROXY_HEADERS: xforwarded
       KC_HTTP_ENABLED: "true"
+      authBaseUrl: ${authBaseUrl}
+      authAdminUrl: ${authAdminUrl}
       GLOW_USER_OIDC_CLIENT_SECRET: ${GLOW_USER_OIDC_CLIENT_SECRET}
       GLOW_RESTAURANT_OIDC_CLIENT_SECRET: ${GLOW_RESTAURANT_OIDC_CLIENT_SECRET}
       GLOW_ORDER_OIDC_CLIENT_SECRET: ${GLOW_ORDER_OIDC_CLIENT_SECRET}
@@ -104,10 +109,20 @@ services:
       GLOW_MENU_OIDC_CLIENT_SECRET: ${GLOW_MENU_OIDC_CLIENT_SECRET}
       GLOW_PAYMENT_OIDC_CLIENT_SECRET: ${GLOW_PAYMENT_OIDC_CLIENT_SECRET}
     volumes:
-      - ../keycloak:/opt/keycloak/data/import
+      - ../keycloak/glow-realm-realm.json:/opt/keycloak/data/import/glow-realm-realm.json:ro
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'exec 3<>/dev/tcp/127.0.0.1/8080 && printf "GET $${GLOW_AUTH_PATH:-/auth}/realms/master HTTP/1.0\r\nHost: localhost\r\n\r\n" >&3 && head -1 <&3 | grep -q "200"',
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 36
+      start_period: 120s
     labels:
       <<: *glow_traefik_common
-      traefik.http.routers.keycloak.rule: Host(`${GLOW_EDGE_AUTH_HOST:-auth.localhost}`)
+      traefik.http.routers.keycloak.rule: Host(`${GLOW_EDGE_HOST:-localhost}`) && PathPrefix(`${GLOW_AUTH_PATH:-/auth}`)
       traefik.http.routers.keycloak.entrypoints: web
       traefik.http.services.keycloak.loadbalancer.server.port: "8080"
     networks:
@@ -125,7 +140,7 @@ services:
       glow-postgres:
         condition: service_healthy
       keycloak:
-        condition: service_started
+        condition: service_healthy
       glow-traefik:
         condition: service_started
     environment:
@@ -133,9 +148,9 @@ services:
       QUARKUS_DATASOURCE_JDBC_URL: jdbc:postgresql://glow-postgres:5432/glow_restaurant
     labels:
       <<: *glow_traefik_common
-      traefik.http.routers.glow-restaurant.rule: Host(`${GLOW_EDGE_HOST:-localhost}`) && PathPrefix(`/restaurant`)
+      traefik.http.routers.glow-restaurant.rule: Host(`${GLOW_EDGE_HOST:-localhost}`) && PathPrefix(`/api/restaurant`)
       traefik.http.routers.glow-restaurant.entrypoints: web
-      traefik.http.middlewares.glow-restaurant-stripprefix.stripprefix.prefixes: /restaurant
+      traefik.http.middlewares.glow-restaurant-stripprefix.stripprefix.prefixes: /api/restaurant
       traefik.http.routers.glow-restaurant.middlewares: glow-restaurant-stripprefix
       traefik.http.services.glow-restaurant.loadbalancer.server.port: "8080"
     networks:
@@ -149,7 +164,7 @@ services:
       glow-postgres:
         condition: service_healthy
       keycloak:
-        condition: service_started
+        condition: service_healthy
       glow-traefik:
         condition: service_started
     environment:
@@ -157,13 +172,13 @@ services:
       QUARKUS_OIDC_CLIENT_ID: glow-user-service
       QUARKUS_OIDC_CREDENTIALS_SECRET: ${GLOW_USER_OIDC_CLIENT_SECRET}
       QUARKUS_DATASOURCE_JDBC_URL: jdbc:postgresql://glow-postgres:5432/glow_user
-      QUARKUS_OIDC_TOKEN_ISSUER: http://auth.localhost/realms/glow-realm
+      # TODO: Might need to be addressed with a general solution
       QUARKUS_HTTP_CORS_ORIGINS: http://localhost
     labels:
       <<: *glow_traefik_common
-      traefik.http.routers.glow-user.rule: Host(`${GLOW_EDGE_HOST:-localhost}`) && PathPrefix(`/user`)
+      traefik.http.routers.glow-user.rule: Host(`${GLOW_EDGE_HOST:-localhost}`) && PathPrefix(`/api/user`)
       traefik.http.routers.glow-user.entrypoints: web
-      traefik.http.middlewares.glow-user-stripprefix.stripprefix.prefixes: /user
+      traefik.http.middlewares.glow-user-stripprefix.stripprefix.prefixes: /api/user
       traefik.http.routers.glow-user.middlewares: glow-user-stripprefix
       traefik.http.services.glow-user.loadbalancer.server.port: "8080"
     networks:
@@ -177,7 +192,7 @@ services:
       glow-postgres:
         condition: service_healthy
       keycloak:
-        condition: service_started
+        condition: service_healthy
       glow-traefik:
         condition: service_started
     environment:
@@ -187,9 +202,9 @@ services:
       QUARKUS_DATASOURCE_JDBC_URL: jdbc:postgresql://glow-postgres:5432/glow_order
     labels:
       <<: *glow_traefik_common
-      traefik.http.routers.glow-order.rule: Host(`${GLOW_EDGE_HOST:-localhost}`) && PathPrefix(`/order`)
+      traefik.http.routers.glow-order.rule: Host(`${GLOW_EDGE_HOST:-localhost}`) && PathPrefix(`/api/order`)
       traefik.http.routers.glow-order.entrypoints: web
-      traefik.http.middlewares.glow-order-stripprefix.stripprefix.prefixes: /order
+      traefik.http.middlewares.glow-order-stripprefix.stripprefix.prefixes: /api/order
       traefik.http.routers.glow-order.middlewares: glow-order-stripprefix
       traefik.http.services.glow-order.loadbalancer.server.port: "8080"
     networks:
@@ -203,7 +218,7 @@ services:
       glow-postgres:
         condition: service_healthy
       keycloak:
-        condition: service_started
+        condition: service_healthy
       glow-traefik:
         condition: service_started
     environment:
@@ -213,9 +228,9 @@ services:
       QUARKUS_DATASOURCE_JDBC_URL: jdbc:postgresql://glow-postgres:5432/glow_cart
     labels:
       <<: *glow_traefik_common
-      traefik.http.routers.glow-cart.rule: Host(`${GLOW_EDGE_HOST:-localhost}`) && PathPrefix(`/cart`)
+      traefik.http.routers.glow-cart.rule: Host(`${GLOW_EDGE_HOST:-localhost}`) && PathPrefix(`/api/cart`)
       traefik.http.routers.glow-cart.entrypoints: web
-      traefik.http.middlewares.glow-cart-stripprefix.stripprefix.prefixes: /cart
+      traefik.http.middlewares.glow-cart-stripprefix.stripprefix.prefixes: /api/cart
       traefik.http.routers.glow-cart.middlewares: glow-cart-stripprefix
       traefik.http.services.glow-cart.loadbalancer.server.port: "8080"
     networks:
@@ -229,7 +244,7 @@ services:
       glow-postgres:
         condition: service_healthy
       keycloak:
-        condition: service_started
+        condition: service_healthy
       glow-traefik:
         condition: service_started
     environment:
@@ -239,9 +254,9 @@ services:
       QUARKUS_DATASOURCE_JDBC_URL: jdbc:postgresql://glow-postgres:5432/glow_courier
     labels:
       <<: *glow_traefik_common
-      traefik.http.routers.glow-courier.rule: Host(`${GLOW_EDGE_HOST:-localhost}`) && PathPrefix(`/courier`)
+      traefik.http.routers.glow-courier.rule: Host(`${GLOW_EDGE_HOST:-localhost}`) && PathPrefix(`/api/courier`)
       traefik.http.routers.glow-courier.entrypoints: web
-      traefik.http.middlewares.glow-courier-stripprefix.stripprefix.prefixes: /courier
+      traefik.http.middlewares.glow-courier-stripprefix.stripprefix.prefixes: /api/courier
       traefik.http.routers.glow-courier.middlewares: glow-courier-stripprefix
       traefik.http.services.glow-courier.loadbalancer.server.port: "8080"
     networks:
@@ -255,7 +270,7 @@ services:
       glow-postgres:
         condition: service_healthy
       keycloak:
-        condition: service_started
+        condition: service_healthy
       glow-traefik:
         condition: service_started
     environment:
@@ -265,9 +280,9 @@ services:
       QUARKUS_DATASOURCE_JDBC_URL: jdbc:postgresql://glow-postgres:5432/glow_menu
     labels:
       <<: *glow_traefik_common
-      traefik.http.routers.glow-menu.rule: Host(`${GLOW_EDGE_HOST:-localhost}`) && PathPrefix(`/menu`)
+      traefik.http.routers.glow-menu.rule: Host(`${GLOW_EDGE_HOST:-localhost}`) && PathPrefix(`/api/menu`)
       traefik.http.routers.glow-menu.entrypoints: web
-      traefik.http.middlewares.glow-menu-stripprefix.stripprefix.prefixes: /menu
+      traefik.http.middlewares.glow-menu-stripprefix.stripprefix.prefixes: /api/menu
       traefik.http.routers.glow-menu.middlewares: glow-menu-stripprefix
       traefik.http.services.glow-menu.loadbalancer.server.port: "8080"
     networks:
@@ -281,7 +296,7 @@ services:
       glow-postgres:
         condition: service_healthy
       keycloak:
-        condition: service_started
+        condition: service_healthy
       glow-traefik:
         condition: service_started
     environment:
@@ -291,9 +306,9 @@ services:
       QUARKUS_DATASOURCE_JDBC_URL: jdbc:postgresql://glow-postgres:5432/glow_payment
     labels:
       <<: *glow_traefik_common
-      traefik.http.routers.glow-payment.rule: Host(`${GLOW_EDGE_HOST:-localhost}`) && PathPrefix(`/payment`)
+      traefik.http.routers.glow-payment.rule: Host(`${GLOW_EDGE_HOST:-localhost}`) && PathPrefix(`/api/payment`)
       traefik.http.routers.glow-payment.entrypoints: web
-      traefik.http.middlewares.glow-payment-stripprefix.stripprefix.prefixes: /payment
+      traefik.http.middlewares.glow-payment-stripprefix.stripprefix.prefixes: /api/payment
       traefik.http.routers.glow-payment.middlewares: glow-payment-stripprefix
       traefik.http.services.glow-payment.loadbalancer.server.port: "8080"
     networks:
@@ -304,11 +319,13 @@ services:
     image: ${SERVICE_IMAGE_REF:-${REGISTRY_PREFIX}/glow-ui:${IMAGE_TAG}}
     container_name: glow-ui
     depends_on:
+      keycloak:
+        condition: service_healthy
       glow-traefik:
         condition: service_started
     labels:
       <<: *glow_traefik_common
-      traefik.http.routers.glow-ui.rule: Host(`${GLOW_EDGE_HOST:-localhost}`) && PathPrefix(`/ui`)
+      traefik.http.routers.glow-ui.rule: Host(`${GLOW_EDGE_HOST:-localhost}`)
       traefik.http.routers.glow-ui.entrypoints: web
       traefik.http.services.glow-ui.loadbalancer.server.port: "80"
     networks:

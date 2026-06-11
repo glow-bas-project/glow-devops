@@ -55,8 +55,6 @@ cp compose/.env.example compose/.env
 
 Set variables from `compose/.env.example` (Postgres, registry, edge proxy, OIDC secrets). `./scripts/compose-up.sh` exits if `.env` is missing. **Connection strings and secrets live in `compose/docker-compose.yml` + `.env`**, not in service repos — see [`compose/README.md`](compose/README.md).
 
-Add `127.0.0.1 auth.localhost` to your hosts file for Keycloak (see [`compose/traefik/README.md`](compose/traefik/README.md)).
-
 ### Naming (compose vs registry)
 
 - **Compose service key:** short name, e.g. `glow-restaurant`
@@ -87,7 +85,7 @@ cd glow-restaurant
 ./gradlew glowBuild
 ```
 
-Uses a **local** image (`glow-restaurant-service:local`) — no registry image required. Restaurant API: **`http://localhost/restaurant/`** (via `glow-traefik`). Requires `com.glow.local-env` and `GLOW_HOME`; see `glow-gradle-plugin` README.
+Uses a **local** image (`glow-restaurant-service:local`) — no registry image required. Restaurant API: **`http://localhost/api/restaurant/`** (via `glow-traefik`). Requires `com.glow.local-env` and `GLOW_HOME`; see `glow-gradle-plugin` README.
 
 ### New service (compose + DB defined, image not in registry yet)
 
@@ -178,12 +176,14 @@ Realm JSON never contains real secrets. User data in staging/prod is never wiped
 
 ## 3. Running Keycloak locally
 
-Keycloak is available at **http://auth.localhost** (via `glow-traefik` on port 80). Add `127.0.0.1 auth.localhost` to your hosts file. Run `./scripts/ensure-oidc-secrets.sh` before first start. The realm is imported from _keycloak/glow-realm-realm.json_. No manual admin UI configuration is needed after the initial setup.
+Keycloak is available at **http://localhost/auth** (via `glow-traefik` on port 80). Run `./scripts/ensure-oidc-secrets.sh` before first start. The realm is imported from _keycloak/glow-realm-realm.json_. No manual admin UI configuration is needed after the initial setup.
 
-Admin console: http://auth.localhost/admin (`admin / admin`)  
-Token endpoint: `http://auth.localhost/realms/glow-realm/protocol/openid-connect/token`
+Admin console: http://localhost/auth/admin (`admin / admin`)  
+Token endpoint: `http://localhost/auth/realms/glow-realm/protocol/openid-connect/token`
 
-Java APIs use path prefixes on `http://localhost` (e.g. `http://localhost/restaurant/`, `http://localhost/user/`). See [`compose/traefik/README.md`](compose/traefik/README.md).
+Frontend UI: **http://localhost/** (`glow-ui` via Traefik catch-all). Java APIs use `/api/<service>` on the same host (e.g. `http://localhost/api/restaurant/`, `http://localhost/api/user/`). See [`compose/traefik/README.md`](compose/traefik/README.md).
+
+After changing `glow-frontend` redirect URIs in the realm JSON, run `./scripts/import-keycloak-realm.sh --strategy overwrite`.
 
 ### Verifying the setup (Optional)
 
@@ -191,7 +191,7 @@ Request a token for the test user. Note the OS difference in curl usage:
 
 **Windows (PowerShell):**
 ```powershell
-curl.exe -X POST http://auth.localhost/realms/glow-realm/protocol/openid-connect/token `
+curl.exe -X POST http://localhost/auth/realms/glow-realm/protocol/openid-connect/token `
   -H "Content-Type: application/x-www-form-urlencoded" `
   -d "grant_type=password" `
   -d "client_id=glow-frontend" `
@@ -201,7 +201,7 @@ curl.exe -X POST http://auth.localhost/realms/glow-realm/protocol/openid-connect
 
 **macOS (Terminal):**
 ```bash
-curl -X POST http://auth.localhost/realms/glow-realm/protocol/openid-connect/token \
+curl -X POST http://localhost/auth/realms/glow-realm/protocol/openid-connect/token \
   -H "Content-Type: application/x-www-form-urlencoded" \
   -d "grant_type=password" \
   -d "client_id=glow-frontend" \

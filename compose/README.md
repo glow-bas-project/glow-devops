@@ -10,19 +10,14 @@ Edge routing (Traefik hostnames, paths, ports) is configured separately — see 
 cp compose/.env.example compose/.env
 ```
 
-Add to your hosts file (see [`traefik/README.md`](traefik/README.md)):
-
-```text
-127.0.0.1 auth.localhost
-```
-
 Edit `compose/.env` and set at least:
 
 | Variable | Purpose |
 |----------|---------|
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` | Postgres, Keycloak DB, Quarkus datasource |
 | `REGISTRY_PREFIX` / `IMAGE_TAG` | Default image when not using `glowBuild` local tag |
-| `TRAEFIK_HTTP_PORT` / `GLOW_EDGE_HOST` / `GLOW_EDGE_AUTH_HOST` | Edge proxy (defaults usually fine) |
+| `TRAEFIK_HTTP_PORT` / `GLOW_EDGE_HOST` / `GLOW_AUTH_PATH` | Edge proxy (defaults usually fine) |
+| `authBaseUrl` / `authAdminUrl` | Public Keycloak URLs (realm JSON placeholders + `KC_HOSTNAME`) |
 | `GLOW_*_OIDC_CLIENT_SECRET` | OIDC client secrets (see [Keycloak](#keycloak)) |
 
 Run `./scripts/ensure-oidc-secrets.sh` to generate OIDC secrets in `compose/.env` before first start.
@@ -31,9 +26,11 @@ Run `./scripts/ensure-oidc-secrets.sh` to generate OIDC secrets in `compose/.env
 
 **Image:** `quay.io/keycloak/keycloak:26.6`  
 **Realm:** `glow-realm` — config in [`keycloak/glow-realm-realm.json`](../keycloak/glow-realm-realm.json)  
-**Admin:** http://auth.localhost/admin (`admin` / `admin`, local dev only)
+**Admin:** http://localhost/auth/admin (`admin` / `admin`, local dev only)
 
 Client secrets live in `compose/.env` (not in git). Confidential clients are listed in [`keycloak/client-secrets.yaml`](../keycloak/client-secrets.yaml) (`clientId` → env var). The realm JSON uses `${GLOW_*_OIDC_CLIENT_SECRET}` placeholders; Keycloak and Quarkus services read the same values.
+
+URL placeholders (`${authBaseUrl}`, `${authAdminUrl}`) are restored on export via [`keycloak/realm-url-placeholders.yaml`](../keycloak/realm-url-placeholders.yaml).
 
 ### New developer setup
 
@@ -44,6 +41,17 @@ cp compose/.env.example compose/.env
 ```
 
 On first boot, `--import-realm` imports `glow-realm-realm.json` when the realm does not exist yet. No manual copy of secrets from the admin UI is required.
+
+If Keycloak fails during first import (check `docker logs glow-keycloak`), reset the Keycloak database and recreate the container:
+
+```bash
+docker compose --env-file compose/.env -f compose/docker-compose.yml stop keycloak
+docker exec glow-postgres psql -U glow -d postgres -c "DROP DATABASE IF EXISTS keycloak;"
+docker exec glow-postgres psql -U glow -d postgres -c "CREATE DATABASE keycloak;"
+docker compose --env-file compose/.env -f compose/docker-compose.yml up -d keycloak
+```
+
+Java services wait for Keycloak **healthy** (OIDC reachable on `/auth/realms/master`) before starting.
 
 ### Export realm (after admin UI changes)
 
@@ -78,24 +86,26 @@ Run any script with `help` for full options, e.g. `./scripts/import-keycloak-rea
 
 | Traffic | URL (port 80) |
 |---------|----------------|
-| Keycloak admin / OIDC from host | `http://auth.localhost/...` |
-| Frontend UI | `http://localhost/ui` |
-| Java APIs from host | `http://localhost/<path>/...` (e.g. `/restaurant`, `/user`) |
+| Keycloak admin / OIDC from host | `http://localhost/auth/...` |
+| Frontend UI | `http://localhost/` (Traefik catch-all; APIs and `/auth` take precedence) |
+| Java APIs from host | `http://localhost/api/<service>/...` (e.g. `/api/restaurant`, `/api/user`) |
 
 Postgres stays on `localhost:5432`. App containers are not published on `8080`–`8087` anymore.
 
 Full routing table and “add a service” steps: [`traefik/README.md`](traefik/README.md).
 
-### Keycloak hostnames (`KC_HOSTNAME` vs admin)
+### Keycloak hostname v2 (frontend + backchannel)
 
-`QUARKUS_OIDC_AUTH_SERVER_URL` is `http://keycloak:8080/...`, but Quarkus also reads **OpenID discovery** and uses the `token_endpoint` / `jwks_uri` from that JSON. If Keycloak is configured with `KC_HOSTNAME=localhost`, discovery advertises `http://localhost/...`. Inside `glow-user`, `localhost` is the app container, not Keycloak → `Connection refused`.
+Keycloak 26.6 uses [hostname v2](https://www.keycloak.org/server/hostname):
 
-Compose sets:
+- `KC_HOSTNAME` = `authBaseUrl` (e.g. `http://localhost/auth`) — public frontend for browser OIDC and token issuer
+- `KC_HOSTNAME_BACKCHANNEL_DYNAMIC=true` — services hitting `keycloak:8080/auth` get backchannel URLs on the Docker network
+- `KC_HTTP_RELATIVE_PATH=/auth` — Keycloak serves under `/auth`; Traefik forwards without strip-prefix
+- `KC_PROXY_HEADERS=xforwarded` — required behind Traefik
 
-- `KC_HOSTNAME: http://keycloak:8080` — URLs for services on the Docker network
-- `KC_HOSTNAME_ADMIN: http://auth.localhost` — admin console and host-side token/curl via Traefik
+`QUARKUS_OIDC_AUTH_SERVER_URL` is `http://keycloak:8080/auth/realms/glow-realm`. Quarkus follows discovery; backchannel dynamic ensures `token_endpoint` / `jwks_uri` resolve inside Docker, not via `localhost`.
 
-After changing Keycloak env, recreate Keycloak and the app:
+After changing Keycloak env, recreate Keycloak and affected services:
 
 ```bash
 docker compose --env-file compose/.env -f compose/docker-compose.yml up -d --force-recreate keycloak
@@ -130,4 +140,4 @@ When adding a service, extend `docker-compose.yml` and `.env.example`; do not pu
 
 ## Kubernetes
 
-Use the same Quarkus env names on Deployments (ConfigMap / Secret). Map `GLOW_EDGE_AUTH_HOST` and API paths to Ingress rules later. Service JARs only ship non-environment defaults (Liquibase, Hibernate, etc.).
+Use the same Quarkus env names on Deployments (ConfigMap / Secret). Service JARs only ship non-environment defaults (Liquibase, Hibernate, etc.).
