@@ -211,6 +211,8 @@ services:
       QUARKUS_OIDC_CLIENT_ID: glow-cart-service
       QUARKUS_OIDC_CREDENTIALS_SECRET: ${GLOW_CART_OIDC_CLIENT_SECRET}
       QUARKUS_DATASOURCE_JDBC_URL: jdbc:postgresql://glow-postgres:5432/glow_cart
+      QUARKUS_OIDC_TOKEN_ISSUER: http://auth.localhost/realms/glow-realm
+      QUARKUS_HTTP_CORS_ORIGINS: http://localhost
     labels:
       <<: *glow_traefik_common
       traefik.http.routers.glow-cart.rule: Host(`${GLOW_EDGE_HOST:-localhost}`) && PathPrefix(`/cart`)
