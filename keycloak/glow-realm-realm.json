@@ -1829,9 +1829,9 @@
       "protocol": "openid-connect",
       "publicClient": true,
       "redirectUris": [
-        "http://localhost/ui/*",
-        "http://localhost/ui/",
-        "http://localhost/ui",
+        "http://localhost/*",
+        "http://localhost/",
+        "http://localhost",
         "http://localhost:5173/*",
         "http://localhost:5173/",
         "http://localhost:5173"

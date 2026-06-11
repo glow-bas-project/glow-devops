@@ -8,6 +8,7 @@ KEYCLOAK_REALM="${KEYCLOAK_REALM:-glow-realm}"
 KEYCLOAK_REALM_FILE="${KEYCLOAK_REALM_FILE:-${DEVOPS_ROOT}/keycloak/glow-realm-realm.json}"
 KEYCLOAK_USERS_FILE="${KEYCLOAK_USERS_FILE:-${DEVOPS_ROOT}/keycloak/glow-realm-users-0.json}"
 KEYCLOAK_CLIENT_SECRETS_FILE="${KEYCLOAK_CLIENT_SECRETS_FILE:-${DEVOPS_ROOT}/keycloak/client-secrets.yaml}"
+KEYCLOAK_REALM_URL_PLACEHOLDERS_FILE="${KEYCLOAK_REALM_URL_PLACEHOLDERS_FILE:-${DEVOPS_ROOT}/keycloak/realm-url-placeholders.yaml}"
 KEYCLOAK_LIB_DIR="${KEYCLOAK_LIB_DIR:-${DEVOPS_ROOT}/scripts/lib}"
 KEYCLOAK_ADMIN_USER="${KEYCLOAK_ADMIN_USER:-admin}"
 KEYCLOAK_ADMIN_PASSWORD="${KEYCLOAK_ADMIN_PASSWORD:-admin}"
@@ -86,16 +87,28 @@ require_client_secrets_file() {
   fi
 }
 
+keycloak_http_relative_path() {
+  echo "${GLOW_AUTH_PATH:-/auth}"
+}
+
+keycloak_internal_server_url() {
+  echo "http://localhost:8080$(keycloak_http_relative_path)"
+}
+
 keycloak_http_ready() {
-  # Keycloak 26.x image has no curl; /health/ready is often disabled. /realms/master returns 200 when up.
+  local path
+  path="$(keycloak_http_relative_path)"
+  # Keycloak 26.x image has no curl; /health/ready is often disabled. /auth/realms/master returns 200 when up.
   docker exec glow-keycloak /bin/bash -c \
-    'exec 3<>/dev/tcp/127.0.0.1/8080 && printf "GET /realms/master HTTP/1.0\r\nHost: localhost\r\n\r\n" >&3 && head -1 <&3 | grep -q "200"' \
+    "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET ${path}/realms/master HTTP/1.0\r\nHost: localhost\r\n\r\n' >&3 && head -1 <&3 | grep -q '200'" \
     >/dev/null 2>&1
 }
 
 wait_for_keycloak() {
   local attempt=0
   local max_attempts=120
+  local path
+  path="$(keycloak_http_relative_path)"
 
   if ! docker ps --format '{{.Names}}' | grep -qx 'glow-keycloak'; then
     echo "Container glow-keycloak is not running." >&2
@@ -106,7 +119,7 @@ wait_for_keycloak() {
   until keycloak_http_ready; do
     attempt=$((attempt + 1))
     if ((attempt > max_attempts)); then
-      echo "Keycloak did not become ready in time (checked /realms/master)." >&2
+      echo "Keycloak did not become ready in time (checked ${path}/realms/master)." >&2
       exit 1
     fi
     if ((attempt % 15 == 0)); then
@@ -119,7 +132,7 @@ wait_for_keycloak() {
 
 kcadm_config_credentials() {
   docker exec glow-keycloak /opt/keycloak/bin/kcadm.sh config credentials \
-    --server "http://localhost:8080" \
+    --server "$(keycloak_internal_server_url)" \
     --realm master \
     --user "${KEYCLOAK_ADMIN_USER}" \
     --password "${KEYCLOAK_ADMIN_PASSWORD}" >/dev/null
@@ -164,19 +177,48 @@ PY
 post_process_realm_export() {
   local input_file="$1"
   local output_file="$2"
-  python3 - "${KEYCLOAK_LIB_DIR}" "${KEYCLOAK_CLIENT_SECRETS_FILE}" "${input_file}" "${output_file}" <<'PY'
+  python3 - "${KEYCLOAK_LIB_DIR}" "${KEYCLOAK_CLIENT_SECRETS_FILE}" "${KEYCLOAK_REALM_URL_PLACEHOLDERS_FILE}" "${ENV_FILE}" "${input_file}" "${output_file}" <<'PY'
 import importlib.util
 import json
 import sys
 from pathlib import Path
 
-lib_dir, secrets_path, input_path, output_path = sys.argv[1:5]
+lib_dir, secrets_path, url_placeholders_path, env_path, input_path, output_path = sys.argv[1:7]
+
 loader = Path(lib_dir) / "load_client_secrets.py"
 spec = importlib.util.spec_from_file_location("load_client_secrets", loader)
 mod = importlib.util.module_from_spec(spec)
 assert spec.loader is not None
 spec.loader.exec_module(mod)
 client_to_env = mod.load_client_secrets(Path(secrets_path))
+
+env = {}
+for line in Path(env_path).read_text(encoding="utf-8").splitlines():
+    line = line.strip()
+    if not line or line.startswith("#") or "=" not in line:
+        continue
+    key, _, value = line.partition("=")
+    env[key.strip()] = value.strip()
+
+client_to_url_env: dict[str, str] = {}
+in_clients = False
+for raw in Path(url_placeholders_path).read_text(encoding="utf-8").splitlines():
+    stripped = raw.strip()
+    if not stripped or stripped.startswith("#"):
+        continue
+    if stripped == "clients:":
+        in_clients = True
+        continue
+    if not in_clients:
+        continue
+    if not raw.startswith((" ", "\t")):
+        break
+    key, sep, value = stripped.partition(":")
+    if sep:
+        client_to_url_env[key.strip()] = value.strip()
+
+def norm_url(url: str) -> str:
+    return url.rstrip("/")
 
 with open(input_path, encoding="utf-8") as fh:
     data = json.load(fh)
@@ -187,6 +229,12 @@ for client in data.get("clients", []):
     client_id = client.get("clientId")
     if client_id in client_to_env and not client.get("publicClient", False):
         client["secret"] = f"${{{client_to_env[client_id]}}}"
+    url_env = client_to_url_env.get(client_id)
+    if url_env and url_env in env:
+        expected = norm_url(env[url_env])
+        root_url = client.get("rootUrl")
+        if isinstance(root_url, str) and norm_url(root_url) == expected:
+            client["rootUrl"] = f"${{{url_env}}}"
 
 with open(output_path, "w", encoding="utf-8") as fh:
     json.dump(data, fh, indent=2, sort_keys=True)
