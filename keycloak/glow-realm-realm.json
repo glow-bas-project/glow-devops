@@ -3244,6 +3244,7 @@
         "composites": {
           "client": {
             "account": [
+              "CUSTOMER",
               "manage-account",
               "view-profile"
             ]
