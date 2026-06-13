@@ -200,7 +200,6 @@ services:
       QUARKUS_OIDC_CLIENT_ID: glow-order-service
       QUARKUS_OIDC_CREDENTIALS_SECRET: ${GLOW_ORDER_OIDC_CLIENT_SECRET}
       QUARKUS_DATASOURCE_JDBC_URL: jdbc:postgresql://glow-postgres:5432/glow_order
-      PAYMENT_SERVICE_URL: http://glow-payment:8080
     labels:
       <<: *glow_traefik_common
       traefik.http.routers.glow-order.rule: Host(`${GLOW_EDGE_HOST:-localhost}`) && PathPrefix(`/api/order`)
@@ -307,7 +306,6 @@ services:
       QUARKUS_OIDC_CLIENT_ID: glow-payment-service
       QUARKUS_OIDC_CREDENTIALS_SECRET: ${GLOW_PAYMENT_OIDC_CLIENT_SECRET}
       QUARKUS_DATASOURCE_JDBC_URL: jdbc:postgresql://glow-postgres:5432/glow_payment
-      STRIPE_BASE_URL: http://stripe-mock:12111
     labels:
       <<: *glow_traefik_common
       traefik.http.routers.glow-payment.rule: Host(`${GLOW_EDGE_HOST:-localhost}`) && PathPrefix(`/api/payment`)
@@ -322,8 +320,8 @@ services:
     <<: *glow_size_small
     image: stripe/stripe-mock:latest
     container_name: stripe-mock
-    # ports:
-     # - "12111:12111"
+    ports:
+      - "12111:12111"
     healthcheck:
       test: ["CMD-SHELL", "nc -z localhost 12111 || exit 1"]
       interval: 5s
