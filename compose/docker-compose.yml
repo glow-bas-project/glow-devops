@@ -299,6 +299,8 @@ services:
         condition: service_healthy
       glow-traefik:
         condition: service_started
+      stripe-mock:
+        condition: service_healthy
     environment:
       <<: *glow_java_env
       QUARKUS_OIDC_CLIENT_ID: glow-payment-service
@@ -311,6 +313,21 @@ services:
       traefik.http.middlewares.glow-payment-stripprefix.stripprefix.prefixes: /api/payment
       traefik.http.routers.glow-payment.middlewares: glow-payment-stripprefix
       traefik.http.services.glow-payment.loadbalancer.server.port: "8080"
+    networks:
+      - glow-local
+
+  stripe-mock:
+    <<: *glow_size_small
+    image: stripe/stripe-mock:latest
+    container_name: stripe-mock
+    ports:
+      - "12111:12111"
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 12111 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
     networks:
       - glow-local
 
