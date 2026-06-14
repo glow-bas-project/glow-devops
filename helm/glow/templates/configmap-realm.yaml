@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: glow-realm
+  labels:
+    app.kubernetes.io/name: glow
+    app.kubernetes.io/instance: {{ .Release.Name }}
+data:
+  glow-realm-realm.json: |
+{{ .Files.Get "files/glow-realm-realm.json" | indent 4 }}

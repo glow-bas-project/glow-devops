@@ -1,0 +1,205 @@
+global:
+  registry: registry.gitlab.au.dk/backend-architecture-and-scalability
+  imageTag: latest
+  pathPrefix: ""
+  edgeHost: localhost
+  edgePort: 8880
+  authPath: /auth
+  authBaseUrl: http://localhost:8880/auth
+  authAdminUrl: http://localhost:8880/auth/admin
+  postgresUser: glow
+  secretsName: glow-secrets
+  imagePullSecrets:
+    - gitlab-registry
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+
+httpRoute:
+  enabled: false
+  # hostnames: []  # defaults to global.edgeHost when empty
+  parentRefs: []
+
+postgres:
+  fullnameOverride: glow-postgres
+  auth:
+    username: glow
+    database: postgres
+    existingSecret: glow-secrets
+    secretKeys:
+      userPasswordKey: POSTGRES_PASSWORD
+  primary:
+    persistence:
+      enabled: true
+      size: 8Gi
+    initdb:
+      scripts:
+        00-databases.sql: |
+          CREATE DATABASE keycloak;
+          CREATE DATABASE glow_restaurant;
+          CREATE DATABASE glow_user;
+          CREATE DATABASE glow_order;
+          CREATE DATABASE glow_cart;
+          CREATE DATABASE glow_courier;
+          CREATE DATABASE glow_menu;
+          CREATE DATABASE glow_payment;
+    resources:
+      requests:
+        memory: 256Mi
+        cpu: 100m
+      limits:
+        memory: 1Gi
+        cpu: 500m
+
+keycloak:
+  enabled: true
+  image:
+    repository: quay.io/keycloak/keycloak
+    tag: "26.6"
+    pullPolicy: IfNotPresent
+  service:
+    port: 8080
+  auth:
+    adminUser: admin
+    adminPassword: admin
+    existingSecret: ""
+    passwordSecretKey: KEYCLOAK_ADMIN_PASSWORD
+  database:
+    host: glow-postgres
+    port: 5432
+    name: keycloak
+    user: glow
+    existingSecret: glow-secrets
+    passwordKey: POSTGRES_PASSWORD
+  initResources:
+    requests:
+      memory: 32Mi
+      cpu: 50m
+    limits:
+      memory: 64Mi
+      cpu: 100m
+  extraEnv:
+    - name: GLOW_USER_OIDC_CLIENT_SECRET
+      valueFrom:
+        secretKeyRef:
+          name: glow-secrets
+          key: GLOW_USER_OIDC_CLIENT_SECRET
+    - name: GLOW_RESTAURANT_OIDC_CLIENT_SECRET
+      valueFrom:
+        secretKeyRef:
+          name: glow-secrets
+          key: GLOW_RESTAURANT_OIDC_CLIENT_SECRET
+    - name: GLOW_ORDER_OIDC_CLIENT_SECRET
+      valueFrom:
+        secretKeyRef:
+          name: glow-secrets
+          key: GLOW_ORDER_OIDC_CLIENT_SECRET
+    - name: GLOW_CART_OIDC_CLIENT_SECRET
+      valueFrom:
+        secretKeyRef:
+          name: glow-secrets
+          key: GLOW_CART_OIDC_CLIENT_SECRET
+    - name: GLOW_COURIER_OIDC_CLIENT_SECRET
+      valueFrom:
+        secretKeyRef:
+          name: glow-secrets
+          key: GLOW_COURIER_OIDC_CLIENT_SECRET
+    - name: GLOW_MENU_OIDC_CLIENT_SECRET
+      valueFrom:
+        secretKeyRef:
+          name: glow-secrets
+          key: GLOW_MENU_OIDC_CLIENT_SECRET
+    - name: GLOW_PAYMENT_OIDC_CLIENT_SECRET
+      valueFrom:
+        secretKeyRef:
+          name: glow-secrets
+          key: GLOW_PAYMENT_OIDC_CLIENT_SECRET
+  resources:
+    requests:
+      memory: 512Mi
+      cpu: 200m
+    limits:
+      memory: 1Gi
+      cpu: 500m
+
+ui:
+  enabled: true
+  image:
+    repository: registry.gitlab.au.dk/backend-architecture-and-scalability/glow-ui
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    port: 80
+  resources:
+    requests:
+      memory: 128Mi
+      cpu: 50m
+    limits:
+      memory: 600Mi
+      cpu: 250m
+
+microservice:
+  resources:
+    requests:
+      memory: 384Mi
+      cpu: 100m
+    limits:
+      memory: 1Gi
+      cpu: 500m
+  probes:
+    startup:
+      periodSeconds: 5
+      failureThreshold: 72
+    readiness:
+      periodSeconds: 5
+      failureThreshold: 6
+    liveness:
+      periodSeconds: 20
+      failureThreshold: 3
+
+microservices:
+  - name: restaurant
+    image: glow-restaurant-service
+    database: glow_restaurant
+    apiPath: restaurant
+    oidcClientId: glow-restaurant-service
+    oidcSecretKey: GLOW_RESTAURANT_OIDC_CLIENT_SECRET
+  - name: user
+    image: glow-user-service
+    database: glow_user
+    apiPath: user
+    oidcClientId: glow-user-service
+    oidcSecretKey: GLOW_USER_OIDC_CLIENT_SECRET
+    corsOrigins: true
+  - name: order
+    image: glow-order-service
+    database: glow_order
+    apiPath: order
+    oidcClientId: glow-order-service
+    oidcSecretKey: GLOW_ORDER_OIDC_CLIENT_SECRET
+  - name: cart
+    image: glow-cart-service
+    database: glow_cart
+    apiPath: cart
+    oidcClientId: glow-cart-service
+    oidcSecretKey: GLOW_CART_OIDC_CLIENT_SECRET
+  - name: courier
+    image: glow-courier-service
+    database: glow_courier
+    apiPath: courier
+    oidcClientId: glow-courier-service
+    oidcSecretKey: GLOW_COURIER_OIDC_CLIENT_SECRET
+  - name: menu
+    image: glow-menu-service
+    database: glow_menu
+    apiPath: menu
+    oidcClientId: glow-menu-service
+    oidcSecretKey: GLOW_MENU_OIDC_CLIENT_SECRET
+  - name: payment
+    image: glow-payment-service
+    database: glow_payment
+    apiPath: payment
+    oidcClientId: glow-payment-service
+    oidcSecretKey: GLOW_PAYMENT_OIDC_CLIENT_SECRET

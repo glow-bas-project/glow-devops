@@ -1,5 +1,7 @@
 .cursor
 compose/.env
+helm/environments/**/secrets.env
+helm/environments/**/secrets.yaml
 
 .DS_Store
 __pycache__/

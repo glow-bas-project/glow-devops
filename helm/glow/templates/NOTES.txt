@@ -1,0 +1,14 @@
+GLOW release {{ .Release.Name }} deployed to namespace {{ .Release.Namespace }}.
+
+Host: {{ include "glow.ingressHost" . }}{{ if .Values.global.edgePort }}:{{ .Values.global.edgePort }}{{ end }}
+Path prefix: {{ .Values.global.pathPrefix | default "/" }}
+Auth path: {{ .Values.global.authBaseUrl }}
+
+Smoke checks:
+  kubectl get pods,ingress,httproute -n {{ .Release.Namespace }}
+  curl {{ .Values.global.authBaseUrl }}/realms/glow-realm
+
+Local k3d:
+  UI:       http://{{ include "glow.ingressHost" . }}{{ if .Values.global.edgePort }}:{{ .Values.global.edgePort }}{{ end }}{{ .Values.global.pathPrefix }}/
+  Keycloak: {{ .Values.global.authBaseUrl }}/realms/glow-realm
+  UI config: GLOW_* env on glow-ui pod (from global.publicOrigin / global.authBaseUrl / global.pathPrefix)

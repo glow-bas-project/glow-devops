@@ -101,6 +101,43 @@ Do **not** rely on `./scripts/compose-up.sh <new-service>` with default **pull**
 - **`./scripts/compose-up.sh --postgres-only`** — same as `ensure-postgres.sh`.
 - See `postgres/README.md` for adding databases and init vs ensure behavior.
 
+## Kubernetes (Helm + k3d / university k3s)
+
+Helm charts under [`helm/`](helm/) deploy the same stack as Compose on k3d (local) or the university Orbit cluster (production).
+
+All Kubernetes commands go through **`./scripts/k8s.sh`** (secrets, deploy, local k3d, service dev). See [`k8s/README.md`](k8s/README.md) and [`helm/README.md`](helm/README.md).
+
+**Windows:** `k8s.sh` is bash — use `bash ./scripts/k8s.sh ...` from PowerShell (Git for Windows) or run the bash blocks in Git Bash / WSL. See [helm/README.md](helm/README.md) for PowerShell examples.
+
+**macOS / Linux (bash):**
+
+```bash
+export GLOW_HOME="/path/to/code"
+
+# Local k3d (uses ~/.kube/glow-k3d.yaml — never glow-config.yaml)
+./scripts/k8s.sh local setup && ./scripts/k8s.sh local deploy
+
+# Orbit cluster (Orbit kubeconfig only in ~/.kube/glow-config.yaml)
+export KUBECONFIG=~/.kube/glow-config.yaml
+./scripts/k8s.sh secrets init production
+./scripts/k8s.sh deploy production --bootstrap
+```
+
+**Windows (PowerShell):**
+
+```powershell
+$env:GLOW_HOME = "C:\path\to\code"
+
+# Local k3d (uses %USERPROFILE%\.kube\glow-k3d.yaml — never glow-config.yaml)
+bash ./scripts/k8s.sh local setup
+bash ./scripts/k8s.sh local deploy
+
+# Orbit cluster (Orbit kubeconfig only in %USERPROFILE%\.kube\glow-config.yaml)
+$env:KUBECONFIG = "$env:USERPROFILE\.kube\glow-config.yaml"
+bash ./scripts/k8s.sh secrets init production
+bash ./scripts/k8s.sh deploy production --bootstrap
+```
+
 # Keycloak
 
 ## 1. Setting up Keycloak locally
@@ -160,10 +197,10 @@ Once Docker Desktop is installed, make sure it is **running** before proceeding
   first startup via `--import-realm`; updates via `./scripts/import-keycloak-realm.sh`
 - **OIDC secrets**: `compose/.env` (generate with `./scripts/ensure-oidc-secrets.sh`)
 
-### Staging and production (contract)
+### Production (Orbit) contract
 
-| Concern | Local | Staging / Prod |
-|---------|-------|----------------|
+| Concern | Local | Production (Orbit) |
+|---------|-------|---------------------|
 | Secret storage | `compose/.env` | K8s Secret / GitLab protected CI variables (`GLOW_*_OIDC_CLIENT_SECRET`) |
 | Keycloak env | `docker-compose.yml` | Deployment `envFrom` / secret refs |
 | Realm config | `keycloak/glow-realm-realm.json` in git | Same file; CI runs `import-keycloak-realm.sh` |
@@ -172,7 +209,7 @@ Once Docker Desktop is installed, make sure it is **running** before proceeding
 | Updates | `import-keycloak-realm.sh` (SKIP) | Same script; never `import --override` on live DB with real users |
 | Rotation | `ensure-oidc-secrets.sh --rotate` + overwrite import | Update vault/CI secret → redeploy Keycloak → import overwrite |
 
-Realm JSON never contains real secrets. User data in staging/prod is never wiped by import. See [`compose/README.md`](compose/README.md#keycloak) for export/import workflows.
+Realm JSON never contains real secrets. User data in production is never wiped by import. See [`compose/README.md`](compose/README.md#keycloak) for export/import workflows.
 
 ## 3. Running Keycloak locally
 

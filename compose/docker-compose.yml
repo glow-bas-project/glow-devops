@@ -340,6 +340,12 @@ services:
         condition: service_healthy
       glow-traefik:
         condition: service_started
+    environment:
+      GLOW_APP_URL: ${GLOW_APP_URL:-http://localhost}
+      GLOW_KEYCLOAK_URL: ${authBaseUrl}
+      GLOW_KEYCLOAK_REALM: glow-realm
+      GLOW_KEYCLOAK_CLIENT_ID: glow-frontend
+      GLOW_PATH_PREFIX: ${GLOW_PATH_PREFIX:-}
     labels:
       <<: *glow_traefik_common
       traefik.http.routers.glow-ui.rule: Host(`${GLOW_EDGE_HOST:-localhost}`)

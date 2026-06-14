@@ -46,6 +46,13 @@ Postgres (`5432`) is not routed through Traefik.
 3. Do not publish host `ports:` unless debugging without Traefik.
 4. Document the public URL in this table.
 
-## Kubernetes (later)
+## Kubernetes
 
-Manifests are not in this repository yet.
+The same URL layout applies on Kubernetes, but edge routing differs by environment:
+
+| Environment | Edge | Docs |
+|-------------|------|------|
+| Local k3d | k3d built-in Traefik + `Ingress` → `glow-api-proxy` | [helm/README.md](../../helm/README.md#http-routing) |
+| Orbit production | Platform Envoy Gateway + `HTTPRoute` → `glow-api-proxy` | [helm/README.md](../../helm/README.md#http-routing) |
+
+Compose is the only stack that runs the dedicated `glow-traefik` container. k3d uses its bundled Traefik; Orbit uses the university cluster gateway.

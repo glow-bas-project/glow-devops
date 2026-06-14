@@ -1,0 +1,1 @@
+GLOW UI ({{ include "ui.fullname" . }}) is running on port {{ .Values.service.port }}.

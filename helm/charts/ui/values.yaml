@@ -1,0 +1,17 @@
+enabled: true
+
+image:
+  repository: registry.gitlab.au.dk/backend-architecture-and-scalability/glow-ui
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 80
+
+resources:
+  limits:
+    memory: 600Mi
+
+global:
+  imagePullSecrets: []

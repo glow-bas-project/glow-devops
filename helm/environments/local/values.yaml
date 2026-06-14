@@ -1,0 +1,26 @@
+global:
+  edgeHost: localhost
+  edgePort: 8880
+  pathPrefix: ""
+  authPath: /auth
+  authBaseUrl: http://localhost:8880/auth
+  authAdminUrl: http://localhost:8880/auth/admin
+  publicOrigin: http://localhost:8880
+  imageTag: latest
+
+# Local k3d uses built-in Traefik (no Envoy Gateway install).
+ingress:
+  enabled: true
+
+httpRoute:
+  enabled: false
+
+microservice:
+  resources:
+    limits:
+      memory: 768Mi
+      cpu: 500m
+  probes:
+    startup:
+      periodSeconds: 5
+      failureThreshold: 90
