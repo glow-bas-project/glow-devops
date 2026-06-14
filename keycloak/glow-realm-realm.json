@@ -1834,7 +1834,16 @@
         "http://localhost",
         "http://localhost:5173/*",
         "http://localhost:5173/",
-        "http://localhost:5173"
+        "http://localhost:5173",
+        "http://localhost:8880/*",
+        "http://localhost:8880/",
+        "http://localhost:8880",
+        "https://glow.example.au.dk/*",
+        "https://glow.example.au.dk/",
+        "https://glow.example.au.dk",
+        "https://project.orbit.au.dk/alt-2026f01/*",
+        "https://project.orbit.au.dk/alt-2026f01/",
+        "https://project.orbit.au.dk/alt-2026f01"
       ],
       "rootUrl": "",
       "serviceAccountsEnabled": false,
@@ -1842,7 +1851,11 @@
       "surrogateAuthRequired": false,
       "webOrigins": [
         "http://localhost",
-        "http://localhost:5173"
+        "http://localhost:5173",
+        "http://localhost:8880",
+        "https://glow.example.au.dk",
+        "https://project.orbit.au.dk",
+        "https://project.orbit.au.dk/alt-2026f01"
       ]
     },
     {
