@@ -1,0 +1,11 @@
+# Reference values — deployments are rendered by the glow umbrella chart (templates/microservices.yaml).
+name: restaurant
+image: glow-restaurant-service
+database: glow_restaurant
+apiPath: restaurant
+oidcClientId: glow-restaurant-service
+oidcSecretKey: GLOW_RESTAURANT_OIDC_CLIENT_SECRET
+
+global:
+  registry: registry.gitlab.au.dk/backend-architecture-and-scalability
+  imageTag: latest

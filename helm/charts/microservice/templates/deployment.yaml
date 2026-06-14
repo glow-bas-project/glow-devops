@@ -1,0 +1,25 @@
+{{- /*
+Standalone microservice chart template (optional direct install).
+The glow umbrella chart uses templates/microservices.yaml instead.
+*/ -}}
+{{- if .Values.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: glow-{{ .Values.name }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: glow-{{ .Values.name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: glow-{{ .Values.name }}
+    spec:
+      containers:
+        - name: {{ .Values.name }}
+          image: "{{ .Values.global.registry }}/{{ .Values.image }}:{{ .Values.global.imageTag }}"
+          ports:
+            - containerPort: 8080
+{{- end }}

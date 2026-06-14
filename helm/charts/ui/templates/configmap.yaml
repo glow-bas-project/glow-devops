@@ -1,0 +1,22 @@
+{{- if .Values.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ui.fullname" . }}-runtime
+  labels:
+    app.kubernetes.io/name: {{ include "ui.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+data:
+  entrypoint.sh: |
+    #!/bin/sh
+    set -eu
+    PATH_PREFIX="{{ .Values.global.pathPrefix | default "" }}"
+    if [ -n "$PATH_PREFIX" ]; then
+      # Vite builds use root-absolute paths; prefix them for Orbit (/alt-2026f01/* only).
+      sed -i "s|src=\"/config.js\"|src=\"${PATH_PREFIX}/config.js\"|g" /usr/share/nginx/html/index.html
+      sed -i "s|src=\"/assets/|src=\"${PATH_PREFIX}/assets/|g" /usr/share/nginx/html/index.html
+      sed -i "s|href=\"/assets/|href=\"${PATH_PREFIX}/assets/|g" /usr/share/nginx/html/index.html
+      sed -i "s|href=\"/favicon|href=\"${PATH_PREFIX}/favicon|g" /usr/share/nginx/html/index.html
+    fi
+    exec /docker-entrypoint.sh nginx -g 'daemon off;'
+{{- end }}

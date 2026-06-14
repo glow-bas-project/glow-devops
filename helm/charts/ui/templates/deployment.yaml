@@ -1,0 +1,78 @@
+{{- if .Values.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ui.fullname" . }}
+  labels:
+    app.kubernetes.io/name: {{ include "ui.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "ui.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "ui.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+      annotations:
+        checksum/runtime-config: {{ include "ui.runtimeConfigChecksum" . | quote }}
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- range . }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}
+      containers:
+        - name: ui
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/bin/sh", "/etc/glow/entrypoint.sh"]
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.port }}
+              protocol: TCP
+          volumeMounts:
+            - name: ui-runtime
+              mountPath: /etc/glow/entrypoint.sh
+              subPath: entrypoint.sh
+          env:
+            - name: GLOW_APP_URL
+              value: {{ .Values.global.publicOrigin | default "http://localhost" | quote }}
+            - name: GLOW_KEYCLOAK_URL
+              value: {{ .Values.global.authBaseUrl | default "http://localhost/auth" | quote }}
+            - name: GLOW_KEYCLOAK_REALM
+              value: "glow-realm"
+            - name: GLOW_KEYCLOAK_CLIENT_ID
+              value: "glow-frontend"
+            - name: GLOW_PATH_PREFIX
+              value: {{ .Values.global.pathPrefix | default "" | quote }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: ui-runtime
+          configMap:
+            name: {{ include "ui.fullname" . }}-runtime
+            defaultMode: 0755
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ui.fullname" . }}
+  labels:
+    app.kubernetes.io/name: {{ include "ui.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: {{ include "ui.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end }}

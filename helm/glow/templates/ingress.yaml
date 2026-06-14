@@ -1,0 +1,57 @@
+{{- if .Values.ingress.enabled }}
+{{- $prefix := include "glow.pathPrefix" . }}
+{{- $host := include "glow.ingressHost" . }}
+{{- $authPath := include "glow.authPath" . }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "glow.fullname" . }}
+  labels:
+    app.kubernetes.io/name: glow
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.ingress.className }}
+  ingressClassName: {{ .Values.ingress.className | quote }}
+  {{- end }}
+  rules:
+    - host: {{ $host | quote }}
+      http:
+        paths:
+          {{- $apiIngressPath := printf "%s/api" $prefix }}
+          - path: {{ $apiIngressPath | quote }}
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "glow.fullname" . }}-api-proxy
+                port:
+                  number: 8080
+          - path: {{ $authPath | quote }}
+            pathType: Prefix
+            backend:
+              service:
+                name: keycloak
+                port:
+                  number: {{ .Values.keycloak.service.port }}
+          {{- $edgeProxy := printf "%s-api-proxy" (include "glow.fullname" .) }}
+          {{- if $prefix }}
+          - path: {{ $prefix | quote }}
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $edgeProxy }}
+                port:
+                  number: 8080
+          {{- else }}
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $edgeProxy }}
+                port:
+                  number: 8080
+          {{- end }}
+{{- end }}

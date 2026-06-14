@@ -1,0 +1,115 @@
+{{- range .Values.microservices }}
+{{- $root := $ }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: glow-{{ .name }}
+  labels:
+    app.kubernetes.io/name: glow-{{ .name }}
+    app.kubernetes.io/instance: {{ $root.Release.Name }}
+    app.kubernetes.io/component: microservice
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: glow-{{ .name }}
+      app.kubernetes.io/instance: {{ $root.Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: glow-{{ .name }}
+        app.kubernetes.io/instance: {{ $root.Release.Name }}
+    spec:
+      {{- include "glow.imagePullSecrets" $root | nindent 6 }}
+      containers:
+        - name: {{ .name }}
+          {{- if .imageRef }}
+          image: {{ .imageRef | quote }}
+          imagePullPolicy: Never
+          {{- else }}
+          image: "{{ $root.Values.global.registry }}/{{ .image }}:{{ .imageTag | default $root.Values.global.imageTag }}"
+          imagePullPolicy: IfNotPresent
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: JAVA_OPTS_APPEND
+              value: -Dquarkus.http.host=0.0.0.0
+            - name: QUARKUS_LOG_CONSOLE_JSON
+              value: "false"
+            - name: QUARKUS_HTTP_PORT
+              value: "8080"
+            - name: QUARKUS_HTTP_NON_APPLICATION_ROOT_PATH
+              value: "/q"
+            - name: QUARKUS_OIDC_AUTH_SERVER_URL
+              value: {{ include "glow.keycloakInternalUrl" $root }}/realms/glow-realm
+            - name: QUARKUS_OIDC_TOKEN_ISSUER
+              value: {{ $root.Values.global.authBaseUrl }}/realms/glow-realm
+            - name: QUARKUS_OIDC_TLS_VERIFICATION
+              value: none
+            - name: QUARKUS_DATASOURCE_USERNAME
+              value: {{ $root.Values.global.postgresUser | quote }}
+            - name: QUARKUS_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $root.Values.global.secretsName }}
+                  key: POSTGRES_PASSWORD
+            - name: QUARKUS_DATASOURCE_JDBC_URL
+              value: jdbc:postgresql://glow-postgres:5432/{{ .database }}
+            {{- if .oidcClientId }}
+            - name: QUARKUS_OIDC_CLIENT_ID
+              value: {{ .oidcClientId | quote }}
+            - name: QUARKUS_OIDC_CREDENTIALS_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $root.Values.global.secretsName }}
+                  key: {{ .oidcSecretKey }}
+            {{- end }}
+            {{- if .corsOrigins }}
+            - name: QUARKUS_HTTP_CORS_ORIGINS
+              value: {{ $root.Values.global.publicOrigin | default (printf "http://%s" (include "glow.ingressHost" $root)) | quote }}
+            {{- end }}
+          {{- with $root.Values.microservice.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          startupProbe:
+            httpGet:
+              path: /q/health/ready
+              port: http
+            periodSeconds: {{ $root.Values.microservice.probes.startup.periodSeconds }}
+            failureThreshold: {{ $root.Values.microservice.probes.startup.failureThreshold }}
+          readinessProbe:
+            httpGet:
+              path: /q/health/ready
+              port: http
+            periodSeconds: {{ $root.Values.microservice.probes.readiness.periodSeconds }}
+            failureThreshold: {{ $root.Values.microservice.probes.readiness.failureThreshold }}
+          livenessProbe:
+            httpGet:
+              path: /q/health/live
+              port: http
+            periodSeconds: {{ $root.Values.microservice.probes.liveness.periodSeconds }}
+            failureThreshold: {{ $root.Values.microservice.probes.liveness.failureThreshold }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: glow-{{ .name }}
+  labels:
+    app.kubernetes.io/name: glow-{{ .name }}
+    app.kubernetes.io/instance: {{ $root.Release.Name }}
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8080
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: glow-{{ .name }}
+    app.kubernetes.io/instance: {{ $root.Release.Name }}
+{{- end }}

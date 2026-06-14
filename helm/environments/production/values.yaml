@@ -1,0 +1,26 @@
+global:
+  edgeHost: project.orbit.au.dk
+  pathPrefix: /alt-2026f01
+  authPath: /alt-2026f01/auth
+  authBaseUrl: https://project.orbit.au.dk/alt-2026f01/auth
+  authAdminUrl: https://project.orbit.au.dk/alt-2026f01/auth/admin
+  publicOrigin: https://project.orbit.au.dk/alt-2026f01
+  imageTag: latest
+
+httpRoute:
+  enabled: true
+  parentRefs:
+    - name: envoy-gateway
+      namespace: envoy-gateway-system
+      sectionName: http
+
+keycloak:
+  auth:
+    existingSecret: glow-secrets
+    passwordSecretKey: KEYCLOAK_ADMIN_PASSWORD
+
+postgres:
+  auth:
+    existingSecret: glow-secrets
+    secretKeys:
+      userPasswordKey: POSTGRES_PASSWORD

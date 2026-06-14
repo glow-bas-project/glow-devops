@@ -1,0 +1,134 @@
+{{- if .Values.keycloak.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keycloak
+  labels:
+    app.kubernetes.io/name: keycloak
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: keycloak
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: keycloak
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: keycloak
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      initContainers:
+        - name: wait-postgres
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - until nc -z {{ .Values.keycloak.database.host }} {{ .Values.keycloak.database.port }}; do sleep 2; done
+          {{- with .Values.keycloak.initResources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      containers:
+        - name: keycloak
+          image: "{{ .Values.keycloak.image.repository }}:{{ .Values.keycloak.image.tag }}"
+          imagePullPolicy: {{ .Values.keycloak.image.pullPolicy }}
+          args:
+            - start
+            - --import-realm
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: KC_BOOTSTRAP_ADMIN_USERNAME
+              value: {{ .Values.keycloak.auth.adminUser | quote }}
+            {{- if .Values.keycloak.auth.existingSecret }}
+            - name: KC_BOOTSTRAP_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.keycloak.auth.existingSecret }}
+                  key: {{ .Values.keycloak.auth.passwordSecretKey }}
+            {{- else }}
+            - name: KC_BOOTSTRAP_ADMIN_PASSWORD
+              value: {{ .Values.keycloak.auth.adminPassword | quote }}
+            {{- end }}
+            - name: KC_DB
+              value: postgres
+            - name: KC_DB_URL
+              value: jdbc:postgresql://{{ .Values.keycloak.database.host }}:{{ .Values.keycloak.database.port }}/{{ .Values.keycloak.database.name }}
+            - name: KC_DB_USERNAME
+              value: {{ .Values.keycloak.database.user | quote }}
+            - name: KC_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.keycloak.database.existingSecret }}
+                  key: {{ .Values.keycloak.database.passwordKey }}
+            - name: KC_HOSTNAME
+              value: {{ .Values.global.authBaseUrl | quote }}
+            - name: KC_HOSTNAME_BACKCHANNEL_DYNAMIC
+              value: "true"
+            - name: KC_HTTP_RELATIVE_PATH
+              value: {{ include "glow.authPath" . | quote }}
+            - name: GLOW_AUTH_PATH
+              value: {{ include "glow.authPath" . | quote }}
+            - name: KC_PROXY_HEADERS
+              value: xforwarded
+            - name: KC_HTTP_ENABLED
+              value: "true"
+            - name: authBaseUrl
+              value: {{ .Values.global.authBaseUrl | quote }}
+            - name: authAdminUrl
+              value: {{ .Values.global.authAdminUrl | quote }}
+            {{- with .Values.keycloak.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          volumeMounts:
+            - name: realm-import
+              mountPath: /opt/keycloak/data/import
+              readOnly: true
+          {{- with .Values.keycloak.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          readinessProbe:
+            httpGet:
+              path: {{ include "glow.authPath" . }}/realms/master
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 5
+            failureThreshold: 36
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: {{ include "glow.authPath" . }}/realms/master
+              port: http
+            initialDelaySeconds: 120
+            periodSeconds: 20
+            timeoutSeconds: 5
+      volumes:
+        - name: realm-import
+          configMap:
+            name: glow-realm
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: keycloak
+  labels:
+    app.kubernetes.io/name: keycloak
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.keycloak.service.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: keycloak
+    app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end }}

@@ -1,0 +1,62 @@
+{{- if .Values.httpRoute.enabled }}
+{{- $prefix := include "glow.pathPrefix" . }}
+{{- $authPath := include "glow.authPath" . }}
+{{- $apiProxy := printf "%s-api-proxy" (include "glow.fullname" .) }}
+{{- $hostnames := .Values.httpRoute.hostnames | default list }}
+{{- if eq (len $hostnames) 0 }}
+{{- $hostnames = list (include "glow.ingressHost" .) }}
+{{- end }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "glow.fullname" . }}
+  labels:
+    app.kubernetes.io/name: glow
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  hostnames:
+    {{- range $hostnames }}
+    - {{ . | quote }}
+    {{- end }}
+  parentRefs:
+    {{- range .Values.httpRoute.parentRefs }}
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: {{ .name | quote }}
+      namespace: {{ .namespace | quote }}
+      sectionName: {{ .sectionName | quote }}
+    {{- end }}
+  rules:
+    {{- $apiPath := printf "%s/api" $prefix }}
+    - matches:
+        - path:
+            type: PathPrefix
+            value: {{ $apiPath | quote }}
+      backendRefs:
+        - name: {{ $apiProxy }}
+          port: 8080
+    - matches:
+        - path:
+            type: PathPrefix
+            value: {{ $authPath | quote }}
+      backendRefs:
+        - name: keycloak
+          port: {{ .Values.keycloak.service.port }}
+    {{- if $prefix }}
+    - matches:
+        - path:
+            type: PathPrefix
+            value: {{ $prefix | quote }}
+      backendRefs:
+        - name: {{ $apiProxy }}
+          port: 8080
+    {{- else }}
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: {{ $apiProxy }}
+          port: 8080
+    {{- end }}
+{{- end }}
