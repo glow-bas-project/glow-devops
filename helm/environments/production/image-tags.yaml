@@ -7,7 +7,7 @@ microserviceImageTags:
   cart: latest
   courier: latest
   menu: latest
-  payment: latest
+  payment: "22"
 ui:
   image:
     tag: "58"
