@@ -30,15 +30,10 @@ spec:
         - name: ui
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          command: ["/bin/sh", "/etc/glow/entrypoint.sh"]
           ports:
             - name: http
               containerPort: {{ .Values.service.port }}
               protocol: TCP
-          volumeMounts:
-            - name: ui-runtime
-              mountPath: /etc/glow/entrypoint.sh
-              subPath: entrypoint.sh
           env:
             - name: GLOW_APP_URL
               value: {{ .Values.global.publicOrigin | default "http://localhost" | quote }}
@@ -52,11 +47,6 @@ spec:
               value: {{ .Values.global.pathPrefix | default "" | quote }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
-      volumes:
-        - name: ui-runtime
-          configMap:
-            name: {{ include "ui.fullname" . }}-runtime
-            defaultMode: 0755
 ---
 apiVersion: v1
 kind: Service
