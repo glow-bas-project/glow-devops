@@ -6,7 +6,7 @@ microserviceImageTags:
   order: latest
   cart: "17"
   courier: latest
-  menu: latest
+  menu: "15"
   payment: "22"
 ui:
   image:
