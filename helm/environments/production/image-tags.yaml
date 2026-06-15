@@ -10,4 +10,4 @@ microserviceImageTags:
   payment: latest
 ui:
   image:
-    tag: latest
+    tag: "58"
