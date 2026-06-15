@@ -1,0 +1,29 @@
+.node_base:
+  image: node:22-alpine
+  variables:
+    NPM_CONFIG_CACHE: "$CI_PROJECT_DIR/.npm"
+  cache:
+    key:
+      files:
+        - package-lock.json
+    paths:
+      - .npm/
+  before_script:
+    - npm ci
+
+.ui_build:
+  extends: .node_base
+  stage: build
+  script:
+    - npm run build
+    - npm run lint
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+.ui_build_main:
+  extends: .node_base
+  stage: build
+  script:
+    - npm run build
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "push"

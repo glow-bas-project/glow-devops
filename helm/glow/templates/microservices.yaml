@@ -28,7 +28,14 @@ spec:
           image: {{ .imageRef | quote }}
           imagePullPolicy: Never
           {{- else }}
-          image: "{{ $root.Values.global.registry }}/{{ .image }}:{{ .imageTag | default $root.Values.global.imageTag }}"
+          {{- $tag := .imageTag }}
+          {{- if not $tag }}
+          {{- if and $root.Values.microserviceImageTags (hasKey $root.Values.microserviceImageTags .name) }}
+          {{- $tag = index $root.Values.microserviceImageTags .name }}
+          {{- end }}
+          {{- end }}
+          {{- $tag = $tag | default $root.Values.global.imageTag }}
+          image: "{{ $root.Values.global.registry }}/{{ .image }}:{{ $tag }}"
           imagePullPolicy: IfNotPresent
           {{- end }}
           ports:
