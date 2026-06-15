@@ -7,6 +7,10 @@ global:
   publicOrigin: https://project.orbit.au.dk/alt-2026f01
   imageTag: latest
 
+ui:
+  image:
+    pullPolicy: Always
+
 httpRoute:
   enabled: true
   parentRefs:
