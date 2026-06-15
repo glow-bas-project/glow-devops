@@ -1,0 +1,10 @@
+# Minimal consumer pipeline for Quarkus microservice repositories.
+# Copy to your service repo as .gitlab-ci.yml and set GLOW_MICROSERVICE_NAME.
+
+include:
+  - project: backend-architecture-and-scalability/glow-devops
+    file: /.gitlab/ci/entry/service-pipeline.yml
+    ref: ci/v1.2.0
+
+variables:
+  GLOW_MICROSERVICE_NAME: restaurant

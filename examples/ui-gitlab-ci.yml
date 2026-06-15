@@ -1,0 +1,10 @@
+# Minimal consumer pipeline for the glow-ui repository.
+# Copy to glow-ui as .gitlab-ci.yml.
+
+include:
+  - project: backend-architecture-and-scalability/glow-devops
+    file: /.gitlab/ci/entry/ui-pipeline.yml
+    ref: ci/v1.2.0
+
+variables:
+  GLOW_DEPLOY_TARGET: ui

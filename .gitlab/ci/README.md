@@ -8,6 +8,8 @@ Use entrypoints based on repository type:
 
 - Public service entrypoint (for microservice repos):
   - `/.gitlab/ci/entry/service-pipeline.yml`
+- Public UI entrypoint (for glow-ui):
+  - `/.gitlab/ci/entry/ui-pipeline.yml`
 - Public plugin entrypoint (for Gradle plugin repos):
   - `/.gitlab/ci/entry/plugin-pipeline.yml`
 - Internal-only governance entrypoint (for `glow-devops` repo itself):
@@ -25,7 +27,7 @@ The `ci/` namespace avoids collisions with service or repo release tags.
 
 `validate_ci_version` runs in merge requests and default-branch pushes.
 
-When relevant files change (`.gitlab/ci/**`, `scripts/ci/**`, `scripts/compose-up.sh`, `compose/docker-compose.yml`, `examples/service-gitlab-ci.yml`), it enforces:
+When relevant files change (`.gitlab/ci/**`, `scripts/ci/**`, `scripts/compose-up.sh`, `compose/docker-compose.yml`, `examples/service-gitlab-ci.yml`, `examples/ui-gitlab-ci.yml`), it enforces:
 
 1. `.gitlab/ci/VERSION` exists and matches `vX.Y.Z`.
 2. In merge requests, VERSION must differ from target branch.
@@ -66,6 +68,10 @@ Service include example:
 
 - `/.gitlab/ci/entry/service-pipeline.yml`
 
+UI include example:
+
+- `/.gitlab/ci/entry/ui-pipeline.yml`
+
 Plugin include example:
 
 - `/.gitlab/ci/entry/plugin-pipeline.yml`
@@ -80,18 +86,23 @@ This ensures internal template governance runs in `glow-devops` without forcing 
 
 ## Multi-Arch Image Publishing
 
-The shared image publish job:
+The shared image publish jobs (Quarkus `.push` and UI `.ui_push`):
 
-- builds and pushes multi-arch manifests for `linux/amd64` and `linux/arm64`,
-- publishes tags:
-  - `${CI_PIPELINE_IID}`
-  - `${CI_COMMIT_SHA}`
-  - `${CI_COMMIT_SHORT_SHA}`
-  - `latest`
-- verifies manifest existence and platform coverage for each tag,
-- exports `IMAGE_REF_BY_DIGEST` and `IMAGE_DIGEST` via dotenv artifact (`image.env`).
+- build and push multi-arch manifests for `linux/amd64` and `linux/arm64`,
+- publish tags:
+  - `${CI_PIPELINE_IID}` (immutable deploy pin; written to `helm/environments/production/image-tags.yaml`)
+  - `latest` (convenience for local compose / manual pulls)
+- verify manifest existence and platform coverage for each tag,
+- export `IMAGE_TAG` and `IMAGE_REF` via dotenv artifact (`image.env`).
 
-Deployments should prefer digest references (`image@sha256:...`) over mutable tags.
+On default-branch push, `update_chart` commits `IMAGE_TAG` to glow-devops (requires `GLOW_DEVOPS_UPDATE_TOKEN`).
+
+### GitOps chart update variables
+
+| Variable | Used by | Updates |
+|----------|---------|---------|
+| `GLOW_MICROSERVICE_NAME` | Quarkus service repos | `microserviceImageTags.<name>` |
+| `GLOW_DEPLOY_TARGET=ui` | glow-ui | `ui.image.tag` |
 
 ## Local Compose Contract
 
@@ -109,7 +120,7 @@ To avoid per-service Gradle customization:
 3. VERSION set to existing `ci/v*` tag -> validation fails.
 4. Two close default-branch pushes with template changes -> tag creation serialized; no tag race.
 5. Plugin repo using plugin entrypoint -> validate/test/version_guard/publish flow runs with optional overrides.
-6. Inspect `${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHA}` -> manifest includes `linux/amd64` and `linux/arm64`.
+6. Inspect `${CI_REGISTRY_IMAGE}:${CI_PIPELINE_IID}` -> manifest includes `linux/amd64` and `linux/arm64`.
 7. Pull `:latest` on both amd64 and arm64 hosts -> succeeds.
 8. Run `scripts/compose-up.sh` without service args -> full environment starts.
 9. Run `scripts/compose-up.sh --image <repo:tag> <service>` -> only selected service uses override image.

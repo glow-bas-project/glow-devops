@@ -1,0 +1,14 @@
+# Per-service image tags for production GitOps (updated by app CI pipelines).
+# Services not listed fall back to global.imageTag in values.yaml.
+microserviceImageTags:
+  restaurant: latest
+  user: latest
+  order: latest
+  cart: latest
+  courier: latest
+  menu: latest
+  payment: latest
+
+ui:
+  image:
+    tag: latest

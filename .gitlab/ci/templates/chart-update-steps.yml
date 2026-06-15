@@ -1,0 +1,66 @@
+.update_chart:
+  image: alpine:3.21
+  stage: release
+  resource_group: glow-devops-chart-update
+  needs:
+    - job: push
+      artifacts: true
+  variables:
+    GIT_STRATEGY: none
+    GLOW_DEVOPS_PROJECT: backend-architecture-and-scalability/glow-devops
+    GLOW_DEVOPS_HOST: gitlab.au.dk
+  before_script:
+    - apk add --no-cache git yq
+  script:
+    - |
+      set -euo pipefail
+
+      if [[ -z "${GLOW_DEVOPS_UPDATE_TOKEN:-}" ]]; then
+        echo "GLOW_DEVOPS_UPDATE_TOKEN is required to update helm/environments/production/image-tags.yaml"
+        exit 1
+      fi
+
+      if [[ -z "${IMAGE_TAG:-}" ]]; then
+        echo "IMAGE_TAG missing from push job dotenv artifact"
+        exit 1
+      fi
+
+      if [[ "${GLOW_DEPLOY_TARGET:-}" == "ui" ]]; then
+        DEPLOY_LABEL="ui"
+      elif [[ -n "${GLOW_MICROSERVICE_NAME:-}" ]]; then
+        DEPLOY_LABEL="${GLOW_MICROSERVICE_NAME}"
+      else
+        echo "Set GLOW_MICROSERVICE_NAME (microservice) or GLOW_DEPLOY_TARGET=ui"
+        exit 1
+      fi
+
+      REPO_URL="https://gitlab-ci-token:${GLOW_DEVOPS_UPDATE_TOKEN}@${GLOW_DEVOPS_HOST}/${GLOW_DEVOPS_PROJECT}.git"
+      git clone --depth 1 --branch main "${REPO_URL}" glow-devops
+      cd glow-devops
+
+      git config user.email "glow-ci@gitlab.au.dk"
+      git config user.name "GLOW CI"
+
+      TAGS_FILE="helm/environments/production/image-tags.yaml"
+      if [[ ! -f "${TAGS_FILE}" ]]; then
+        echo "Missing ${TAGS_FILE} in glow-devops"
+        exit 1
+      fi
+
+      if [[ "${GLOW_DEPLOY_TARGET:-}" == "ui" ]]; then
+        yq -i ".ui.image.tag = \"${IMAGE_TAG}\"" "${TAGS_FILE}"
+      else
+        yq -i ".microserviceImageTags.${GLOW_MICROSERVICE_NAME} = \"${IMAGE_TAG}\"" "${TAGS_FILE}"
+      fi
+
+      git add "${TAGS_FILE}"
+      if git diff --staged --quiet; then
+        echo "No change to ${TAGS_FILE}"
+        exit 0
+      fi
+
+      git commit -m "chore(deploy): bump ${DEPLOY_LABEL} image to ${IMAGE_TAG}"
+      git push origin main
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "push" && $GLOW_DEPLOY_TARGET == "ui"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "push" && $GLOW_MICROSERVICE_NAME
