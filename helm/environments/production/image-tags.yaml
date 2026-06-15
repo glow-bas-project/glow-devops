@@ -2,7 +2,7 @@
 # Services not listed fall back to global.imageTag in values.yaml.
 microserviceImageTags:
   restaurant: "27"
-  user: latest
+  user: "36"
   order: latest
   cart: latest
   courier: latest
