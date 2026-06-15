@@ -48,6 +48,7 @@ helm/
   environments/
     local/values.yaml           ← localhost:8880, paths like Compose
     production/values.yaml      ← Orbit hostname + /alt-2026f01 path prefix + HTTPRoute
+    production/image-tags.yaml  ← per-service + UI image tags (GitOps; updated by app CI)
     orbit-resources.yaml        ← vCluster resource limits (Orbit + local k3d)
 
 k8s/
@@ -265,16 +266,18 @@ The seven Quarkus services are **not** separate subchart instances. They are def
 Helm merges files in order (later overrides earlier):
 
 ```bash
--f helm/glow/values.yaml                    # shared: postgres, keycloak, service list, registry
--f helm/environments/local/values.yaml     # host, paths, Keycloak public URLs
+-f helm/glow/values.yaml                         # shared: postgres, keycloak, service list, registry
+-f helm/environments/production/values.yaml    # host, paths, Keycloak public URLs
+-f helm/environments/production/image-tags.yaml # per-service + UI image tags (GitOps)
+-f helm/environments/orbit-resources.yaml      # resource limits (Orbit)
 ```
 
 Important `global:` keys:
 
 | Key | Meaning |
 |-----|---------|
-| `registry` | GitLab registry prefix for Java/UI images |
-| `imageTag` | Tag for all microservices and UI (override with `--set global.imageTag=1234`) |
+| `registry` | GitLab registry prefix for Java images |
+| `imageTag` | Fallback tag when a service has no entry in `image-tags.yaml` (local/manual deploy) |
 | `edgeHost` | Host for Ingress (local k3d) or HTTPRoute hostnames (Orbit) |
 | `pathPrefix` | Path prefix prepended to UI and API paths (e.g. `/alt-2026f01` on Orbit) |
 | `authPath` | Keycloak HTTP path (e.g. `/alt-2026f01/auth`) |
@@ -282,7 +285,24 @@ Important `global:` keys:
 | `secretsName` | K8s Secret for passwords (`glow-secrets`) |
 | `imagePullSecrets` | Usually `gitlab-registry` |
 
-Environment files set `global.authBaseUrl`, `global.authPath`, etc. The Keycloak template reads those for `KC_HOSTNAME` and `KC_HTTP_RELATIVE_PATH` (same contract as [compose/README.md](../compose/README.md#keycloak-hostname-v2-frontend--backchannel)).
+### Production image tags (GitOps)
+
+[`helm/environments/production/image-tags.yaml`](environments/production/image-tags.yaml) is the deploy source of truth for app image versions on Orbit:
+
+- `microserviceImageTags.<name>` — one entry per Quarkus API (`restaurant`, `user`, `order`, …)
+- `ui.image.tag` — glow-ui frontend tag
+
+Each app repository CI pipeline (on `main` push) updates **only its own key** with `${CI_PIPELINE_IID}` after publishing the image. Externally managed **Argo CD** must include this file in the Helm Application `valueFiles`:
+
+```
+../environments/production/image-tags.yaml
+```
+
+alongside `values.yaml`, `../environments/production/values.yaml`, and `../environments/orbit-resources.yaml`.
+
+Manual override: `./scripts/k8s.sh deploy production --tag 1234` still sets `global.imageTag` for services without a `microserviceImageTags` entry.
+
+Environment files set `global.authBaseUrl`, `global.authPath`, etc.
 
 ### PostgreSQL (Bitnami)
 
@@ -416,9 +436,9 @@ kubectl cluster-info
 kubectl apply -f k8s/namespaces.yaml
 ```
 
-**Deploy:** `./scripts/k8s.sh deploy production` uses `KUBECONFIG`, runs `helm dependency update`, and applies environment values. Use `--bootstrap` on first run. Use `--dry-run` to render only. While waiting, pod status is printed every 20s (same as local k3d). Use `./scripts/k8s.sh status|wait production` in another terminal or after `--no-wait`.
+**Deploy:** `./scripts/k8s.sh deploy production` uses `KUBECONFIG`, runs `helm dependency update`, and applies environment values including `image-tags.yaml`. Use `--bootstrap` on first run. Use `--dry-run` to render only. While waiting, pod status is printed every 20s (same as local k3d). Use `./scripts/k8s.sh status|wait production` in another terminal or after `--no-wait`.
 
-**Pin image versions:** `./scripts/k8s.sh deploy production --tag 1234` sets `global.imageTag`.
+**Pin image versions (manual):** `./scripts/k8s.sh deploy production --tag 1234` sets `global.imageTag` as a fallback for services not listed in `image-tags.yaml`.
 
 Production runs in an isolated namespace — own Postgres PVC, Keycloak DB, and secrets.
 

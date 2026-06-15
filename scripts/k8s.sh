@@ -275,6 +275,9 @@ cmd_deploy() {
     -f "${DEVOPS_ROOT}/helm/environments/orbit-resources.yaml"
     -n "${GLOW_K8S_NAMESPACE}"
   )
+  if [[ "${env}" == "production" && -f "${DEVOPS_ROOT}/helm/environments/production/image-tags.yaml" ]]; then
+    args+=(-f "${DEVOPS_ROOT}/helm/environments/production/image-tags.yaml")
+  fi
   if [[ -n "${image_tag}" ]]; then
     args+=(--set "global.imageTag=${image_tag}")
   fi

@@ -1,7 +1,8 @@
 include:
   - local: "/.gitlab/ci/variables/defaults.yml"
-  - local: "/.gitlab/ci/templates/java-steps.yml"
   - local: "/.gitlab/ci/templates/docker-steps.yml"
+  - local: "/.gitlab/ci/templates/ui-build-steps.yml"
+  - local: "/.gitlab/ci/templates/ui-docker-steps.yml"
   - local: "/.gitlab/ci/templates/chart-update-steps.yml"
 
 workflow:
@@ -11,20 +12,16 @@ workflow:
 
 stages:
   - build
-  - test
   - release
 
 build:
-  extends: .build
-
-test:
-  extends: .test
+  extends: .ui_build
 
 build_main:
-  extends: .build_main
+  extends: .ui_build_main
 
 push:
-  extends: .push
+  extends: .ui_push
 
 update_chart:
   extends: .update_chart
