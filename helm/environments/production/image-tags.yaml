@@ -10,4 +10,4 @@ microserviceImageTags:
   payment: "22"
 ui:
   image:
-    tag: "58"
+    tag: "60"
