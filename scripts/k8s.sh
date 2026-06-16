@@ -45,6 +45,9 @@ Deploy (Orbit university cluster — NOT local k3d):
     --dry-run      helm template only
     --no-wait      Apply manifests and return (skip rollout wait; use: k8s.sh wait production)
 
+  deploy-service production --service <name> --tag <tag>
+    Deploy one service.
+
   Requires Orbit kubeconfig at ~/.kube/glow-config.yaml.
 
 Lifecycle:
@@ -70,6 +73,7 @@ Examples:
   ./scripts/k8s.sh status production
   ./scripts/k8s.sh wait production
   ./scripts/k8s.sh deploy production --tag latest
+  ./scripts/k8s.sh deploy-service production --service restaurant --tag 27
   ./scripts/k8s.sh secrets rotate production
   ./scripts/k8s.sh teardown production
 
@@ -353,6 +357,15 @@ main() {
       ;;
     deploy)
       cmd_deploy "$@"
+      ;;
+    deploy-service)
+      local env="${1:-}"
+      if [[ "${env}" != "production" ]]; then
+        echo "Usage: ./scripts/k8s.sh deploy-service production --service <name> --tag <tag>" >&2
+        exit 1
+      fi
+      shift
+      exec "${SCRIPT_DIR}/lib/deploy-production-service.sh" "$@"
       ;;
     status)
       cmd_status "${1:-}"

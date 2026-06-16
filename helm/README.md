@@ -48,7 +48,7 @@ helm/
   environments/
     local/values.yaml           ← localhost:8880, paths like Compose
     production/values.yaml      ← Orbit hostname + /alt-2026f01 path prefix + HTTPRoute
-    production/image-tags.yaml  ← per-service + UI image tags (GitOps; updated by app CI)
+    production/image-tags.yaml  ← per-service + UI image tags (updated by app CI; deployed via k8s.sh deploy-service)
     orbit-resources.yaml        ← vCluster resource limits (Orbit + local k3d)
 
 k8s/
@@ -268,7 +268,7 @@ Helm merges files in order (later overrides earlier):
 ```bash
 -f helm/glow/values.yaml                         # shared: postgres, keycloak, service list, registry
 -f helm/environments/production/values.yaml    # host, paths, Keycloak public URLs
--f helm/environments/production/image-tags.yaml # per-service + UI image tags (GitOps)
+-f helm/environments/production/image-tags.yaml # per-service + UI image tags (CI deploy)
 -f helm/environments/orbit-resources.yaml      # resource limits (Orbit)
 ```
 
@@ -285,22 +285,30 @@ Important `global:` keys:
 | `secretsName` | K8s Secret for passwords (`glow-secrets`) |
 | `imagePullSecrets` | Usually `gitlab-registry` |
 
-### Production image tags (GitOps)
+### Production image tags (CI deploy)
 
-[`helm/environments/production/image-tags.yaml`](environments/production/image-tags.yaml) is the deploy source of truth for app image versions on Orbit:
+[`helm/environments/production/image-tags.yaml`](environments/production/image-tags.yaml) is the version audit trail for Orbit production:
 
 - `microserviceImageTags.<name>` — one entry per Quarkus API (`restaurant`, `user`, `order`, …)
 - `ui.image.tag` — glow-ui frontend tag
 
-Each app repository CI pipeline (on `main` push) updates **only its own key** with `${CI_PIPELINE_IID}` after publishing the image. Externally managed **Argo CD** must include this file in the Helm Application `valueFiles`:
+On each `main` push, the service pipeline:
 
-```
-../environments/production/image-tags.yaml
-```
+1. Publishes the image with tag `${CI_PIPELINE_IID}`
+2. Commits that tag to `image-tags.yaml` on `glow-devops` `main`
+3. Runs `scripts/lib/deploy-production-service.sh` (`kubectl set image` + rollout; Deployments use **Recreate** in Helm — no extra pod during update)
+4. Runs Playwright smoke + service-tagged e2e tests
+5. On test failure, reverts the git commit and redeploys the previous tag
 
-alongside `values.yaml`, `../environments/production/values.yaml`, and `../environments/orbit-resources.yaml`.
+**Bootstrap (once):** `./scripts/k8s.sh deploy production --bootstrap` installs the full stack. CI never replaces bootstrap; it only updates individual services that already exist in the cluster.
 
-Manual override: `./scripts/k8s.sh deploy production --tag 1234` still sets `global.imageTag` for services without a `microserviceImageTags` entry.
+**Manual full deploy:** `./scripts/k8s.sh deploy production` applies all values including `image-tags.yaml`.
+
+**Single service (local or CI):** `./scripts/k8s.sh deploy-service production --service restaurant --tag 27`
+
+Microservice and UI Deployments use `strategy.type: Recreate` in Helm (same as Keycloak), so image updates do not run old and new pods at the same time — important on Orbit's 4Gi memory quota. After changing Helm templates, run `./scripts/k8s.sh deploy production` once so live Deployments pick up `Recreate`.
+
+Manual override: `./scripts/k8s.sh deploy production --tag 1234` still sets `global.imageTag` as fallback for services without a `microserviceImageTags` entry.
 
 Environment files set `global.authBaseUrl`, `global.authPath`, etc.
 
@@ -484,7 +492,7 @@ helm search repo bitnami/postgresql --versions | head -3
 | `helm upgrade` seems frozen | Wait for `--wait` to finish, or use `--no-wait` |
 | Keycloak crash / import errors | Check `kubectl logs -n <ns> deploy/keycloak`; reset DB like [compose/README.md](../compose/README.md#keycloak) if first import failed |
 | 404 on https://project.orbit.au.dk/alt-2026f01/ | Missing or unaccepted `HTTPRoute` — check `kubectl get httproute -n glow-production` and `kubectl describe httproute glow`. Orbit uses Envoy Gateway, not Ingress. In-cluster UI: `kubectl exec deploy/glow-api-proxy -- wget -qO- http://127.0.0.1:8080/alt-2026f01/` |
-| `glow-user` / `keycloak` Pending, quota SyncError | `requests.memory` over 4Gi — redeploy after `orbit-resources.yaml` update; delete Pending pods |
+| `glow-*` Pending, quota exceeded | Stuck from an old rolling update — run deploy again for that service, or scale to 0: `kubectl scale deploy/glow-<name> -n glow-production --replicas=0` then redeploy |
 | OIDC / 401 from APIs | `glow-secrets` OIDC values out of sync with Keycloak — run `import-keycloak-realm.sh --strategy overwrite` then redeploy |
 | 404 on API paths | Check `kubectl get pods -n <ns>` includes `glow-api-proxy`; `curl http://localhost:8880/api/restaurant/restaurants` should return JSON |
 | UI loads but Sign in fails / `Web Crypto API is not available` | Use **`http://localhost:8880`** (not `glow.local`). Check `kubectl exec` env on `glow-ui` pod (`GLOW_APP_URL`, `GLOW_KEYCLOAK_URL`). Update realm redirects if needed (`import-keycloak-realm.sh --strategy overwrite` or recreate Keycloak DB). |
