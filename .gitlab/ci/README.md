@@ -27,7 +27,7 @@ The `ci/` namespace avoids collisions with service or repo release tags.
 
 `validate_ci_version` runs in merge requests and default-branch pushes.
 
-When relevant files change (`.gitlab/ci/**`, `scripts/ci/**`, `scripts/compose-up.sh`, `compose/docker-compose.yml`, `examples/service-gitlab-ci.yml`, `examples/ui-gitlab-ci.yml`), it enforces:
+When relevant files change (`.gitlab/ci/**`, `scripts/ci/**`, `scripts/lib/deploy-production-service.sh`, `scripts/lib/rollback-production-deploy.sh`, `scripts/compose-up.sh`, `compose/docker-compose.yml`, `examples/service-gitlab-ci.yml`, `examples/ui-gitlab-ci.yml`), it enforces:
 
 1. `.gitlab/ci/VERSION` exists and matches `vX.Y.Z`.
 2. In merge requests, VERSION must differ from target branch.
@@ -95,7 +95,13 @@ The shared image publish jobs (Quarkus `.push` and UI `.ui_push`):
 - verify manifest existence and platform coverage for each tag,
 - export `IMAGE_TAG` and `IMAGE_REF` via dotenv artifact (`image.env`).
 
-On default-branch push, `update_chart` commits `IMAGE_TAG` to glow-devops (requires `GLOW_DEVOPS_UPDATE_TOKEN`).
+On default-branch push, the release pipeline:
+
+1. `push` — publishes `${CI_PIPELINE_IID}` and `latest` image tags
+2. `update_chart` — commits `IMAGE_TAG` to `helm/environments/production/image-tags.yaml` on glow-devops `main` (requires `GLOW_DEVOPS_UPDATE_TOKEN`)
+3. `deploy_service` — `kubectl set image` via `scripts/lib/deploy-production-service.sh` (requires `KUBECONFIG`)
+4. `verify_e2e` — Playwright `@smoke` + `@service:<name>` tests against `BASE_URL`
+5. `rollback_deploy` — on verify failure: `git revert` chart commit + redeploy `PREVIOUS_IMAGE_TAG`
 
 ### GitOps chart update variables
 
@@ -103,6 +109,16 @@ On default-branch push, `update_chart` commits `IMAGE_TAG` to glow-devops (requi
 |----------|---------|---------|
 | `GLOW_MICROSERVICE_NAME` | Quarkus service repos | `microserviceImageTags.<name>` |
 | `GLOW_DEPLOY_TARGET=ui` | glow-ui | `ui.image.tag` |
+
+### Production deploy variables (group level)
+
+| Variable | Type | Used by |
+|----------|------|---------|
+| `GLOW_DEVOPS_UPDATE_TOKEN` | Variable | `update_chart`, `rollback_deploy` |
+| `KUBECONFIG` | **File** | `deploy_service`, `rollback_deploy` (Orbit vCluster kubeconfig) |
+| `BASE_URL` | Variable | `verify_e2e` (default in template: production Orbit URL; override per group) |
+
+Consumer repositories must pin `ref: ci/v1.3.0` (or newer) after this release is tagged on glow-devops `main`.
 
 ## Local Compose Contract
 
@@ -124,4 +140,6 @@ To avoid per-service Gradle customization:
 7. Pull `:latest` on both amd64 and arm64 hosts -> succeeds.
 8. Run `scripts/compose-up.sh` without service args -> full environment starts.
 9. Run `scripts/compose-up.sh --image <repo:tag> <service>` -> only selected service uses override image.
+10. `./scripts/k8s.sh deploy-service production --service restaurant --tag <id>` -> rollout succeeds on cluster with Recreate strategy.
+11. Service `main` push with group vars set -> `deploy_service` rolls one Deployment; `verify_e2e` runs Playwright; failed verify triggers `rollback_deploy`.
 

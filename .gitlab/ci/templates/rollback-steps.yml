@@ -1,0 +1,35 @@
+.rollback_deploy:
+  image: alpine:3.21
+  stage: rollback
+  resource_group: glow-production-deploy
+  needs:
+    - job: verify_e2e
+    - job: update_chart
+      artifacts: true
+  variables:
+    GIT_STRATEGY: none
+    GLOW_DEVOPS_PROJECT: backend-architecture-and-scalability/glow-devops
+    GLOW_DEVOPS_HOST: gitlab.au.dk
+  before_script:
+    - apk add --no-cache bash git kubectl
+  script:
+    - |
+      set -euo pipefail
+      if [[ "${CHART_UPDATED:-}" != "true" ]]; then
+        echo "No chart update was deployed; skipping rollback."
+        exit 0
+      fi
+      if [[ -z "${KUBECONFIG:-}" ]]; then
+        echo "KUBECONFIG file variable is required (Orbit kubeconfig)."
+        exit 1
+      fi
+      REPO_URL="https://gitlab-ci-token:${CI_JOB_TOKEN}@${GLOW_DEVOPS_HOST}/${GLOW_DEVOPS_PROJECT}.git"
+      git clone --depth 1 --branch main "${REPO_URL}" glow-devops
+      glow-devops/scripts/lib/rollback-production-deploy.sh \
+        --service "${GLOW_DEPLOY_SERVICE}" \
+        --chart-commit "${CHART_COMMIT_SHA}" \
+        --previous-tag "${PREVIOUS_IMAGE_TAG}" \
+        --token "${GLOW_DEVOPS_UPDATE_TOKEN}"
+      echo "Rollback complete; failing pipeline after revert."
+      exit 1
+  when: on_failure

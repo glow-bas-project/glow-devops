@@ -1,0 +1,31 @@
+.verify_e2e:
+  image: mcr.microsoft.com/playwright:v1.49.1-jammy
+  stage: verify
+  needs:
+    - job: deploy_service
+    - job: update_chart
+      artifacts: true
+    - job: push
+      artifacts: true
+  variables:
+    GIT_STRATEGY: none
+    GLOW_UI_PROJECT: backend-architecture-and-scalability/glow-ui
+    GLOW_UI_HOST: gitlab.au.dk
+    BASE_URL: https://project.orbit.au.dk/alt-2026f01
+  script:
+    - |
+      set -euo pipefail
+      if [[ "${CHART_UPDATED:-}" != "true" ]]; then
+        echo "No chart update; skipping e2e verify."
+        exit 0
+      fi
+      UI_REPO="https://gitlab-ci-token:${CI_JOB_TOKEN}@${GLOW_UI_HOST}/${GLOW_UI_PROJECT}.git"
+      git clone --depth 1 "${UI_REPO}" glow-ui
+      cd glow-ui
+      npm ci
+      npx playwright test --grep "@smoke|@service:${GLOW_DEPLOY_SERVICE}"
+  artifacts:
+    when: always
+    paths:
+      - glow-ui/playwright-report/
+    expire_in: 7 days

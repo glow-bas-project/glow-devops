@@ -1,0 +1,36 @@
+.deploy_release_rules:
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "push" && $GLOW_DEPLOY_TARGET == "ui"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "push" && $GLOW_MICROSERVICE_NAME
+
+.deploy_service:
+  image: alpine:3.21
+  stage: deploy
+  resource_group: glow-production-deploy
+  needs:
+    - job: update_chart
+      artifacts: true
+    - job: push
+      artifacts: true
+  variables:
+    GIT_STRATEGY: none
+    GLOW_DEVOPS_PROJECT: backend-architecture-and-scalability/glow-devops
+    GLOW_DEVOPS_HOST: gitlab.au.dk
+  before_script:
+    - apk add --no-cache bash git kubectl
+  script:
+    - |
+      set -euo pipefail
+      if [[ "${CHART_UPDATED:-}" != "true" ]]; then
+        echo "No chart update; skipping deploy."
+        exit 0
+      fi
+      if [[ -z "${KUBECONFIG:-}" ]]; then
+        echo "KUBECONFIG file variable is required (Orbit kubeconfig)."
+        exit 1
+      fi
+      REPO_URL="https://gitlab-ci-token:${CI_JOB_TOKEN}@${GLOW_DEVOPS_HOST}/${GLOW_DEVOPS_PROJECT}.git"
+      git clone --depth 1 --branch main "${REPO_URL}" glow-devops
+      glow-devops/scripts/lib/deploy-production-service.sh \
+        --service "${GLOW_DEPLOY_SERVICE}" \
+        --tag "${IMAGE_TAG}"
