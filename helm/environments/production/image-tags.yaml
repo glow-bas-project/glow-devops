@@ -3,7 +3,7 @@
 microserviceImageTags:
   restaurant: "27"
   user: "36"
-  order: latest
+  order: "21"
   cart: "17"
   courier: latest
   menu: "15"
