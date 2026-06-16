@@ -29,6 +29,8 @@ is_ci_path() {
   local path="$1"
   [[ "${path}" == .gitlab/ci/* ]] || [[ "${path}" == .gitlab/ci ]] || \
     [[ "${path}" == scripts/ci/* ]] || [[ "${path}" == scripts/compose-up.sh ]] || \
+    [[ "${path}" == scripts/lib/deploy-production-service.sh ]] || \
+    [[ "${path}" == scripts/lib/rollback-production-deploy.sh ]] || \
     [[ "${path}" == compose/docker-compose.yml ]] || [[ "${path}" == examples/service-gitlab-ci.yml ]] || \
     [[ "${path}" == examples/ui-gitlab-ci.yml ]]
 }

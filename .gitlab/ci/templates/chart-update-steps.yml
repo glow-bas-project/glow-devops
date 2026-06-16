@@ -5,6 +5,9 @@
   needs:
     - job: push
       artifacts: true
+  artifacts:
+    reports:
+      dotenv: deploy.env
   variables:
     GIT_STRATEGY: none
     GLOW_DEVOPS_PROJECT: backend-architecture-and-scalability/glow-devops
@@ -27,8 +30,10 @@
 
       if [[ "${GLOW_DEPLOY_TARGET:-}" == "ui" ]]; then
         DEPLOY_LABEL="ui"
+        GLOW_DEPLOY_SERVICE="ui"
       elif [[ -n "${GLOW_MICROSERVICE_NAME:-}" ]]; then
         DEPLOY_LABEL="${GLOW_MICROSERVICE_NAME}"
+        GLOW_DEPLOY_SERVICE="${GLOW_MICROSERVICE_NAME}"
       else
         echo "Set GLOW_MICROSERVICE_NAME (microservice) or GLOW_DEPLOY_TARGET=ui"
         exit 1
@@ -48,19 +53,30 @@
       fi
 
       if [[ "${GLOW_DEPLOY_TARGET:-}" == "ui" ]]; then
+        PREVIOUS_IMAGE_TAG="$(yq -r '.ui.image.tag // "latest"' "${TAGS_FILE}")"
         yq -i ".ui.image.tag = \"${IMAGE_TAG}\"" "${TAGS_FILE}"
       else
+        PREVIOUS_IMAGE_TAG="$(yq -r ".microserviceImageTags.${GLOW_MICROSERVICE_NAME} // \"latest\"" "${TAGS_FILE}")"
         yq -i ".microserviceImageTags.${GLOW_MICROSERVICE_NAME} = \"${IMAGE_TAG}\"" "${TAGS_FILE}"
       fi
 
       git add "${TAGS_FILE}"
       if git diff --staged --quiet; then
         echo "No change to ${TAGS_FILE}"
+        echo "CHART_UPDATED=false" >> "${CI_PROJECT_DIR}/deploy.env"
         exit 0
       fi
 
       git commit -m "chore(deploy): bump ${DEPLOY_LABEL} image to ${IMAGE_TAG}"
       git push origin main
+
+      CHART_COMMIT_SHA="$(git rev-parse HEAD)"
+      {
+        echo "CHART_UPDATED=true"
+        echo "CHART_COMMIT_SHA=${CHART_COMMIT_SHA}"
+        echo "PREVIOUS_IMAGE_TAG=${PREVIOUS_IMAGE_TAG}"
+        echo "GLOW_DEPLOY_SERVICE=${GLOW_DEPLOY_SERVICE}"
+      } >> "${CI_PROJECT_DIR}/deploy.env"
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "push" && $GLOW_DEPLOY_TARGET == "ui"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "push" && $GLOW_MICROSERVICE_NAME

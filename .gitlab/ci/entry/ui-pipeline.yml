@@ -4,6 +4,9 @@ include:
   - local: "/.gitlab/ci/templates/ui-build-steps.yml"
   - local: "/.gitlab/ci/templates/ui-docker-steps.yml"
   - local: "/.gitlab/ci/templates/chart-update-steps.yml"
+  - local: "/.gitlab/ci/templates/deploy-steps.yml"
+  - local: "/.gitlab/ci/templates/verify-steps.yml"
+  - local: "/.gitlab/ci/templates/rollback-steps.yml"
 
 workflow:
   rules:
@@ -13,6 +16,9 @@ workflow:
 stages:
   - build
   - release
+  - deploy
+  - verify
+  - rollback
 
 build:
   extends: .ui_build
@@ -25,3 +31,18 @@ push:
 
 update_chart:
   extends: .update_chart
+
+deploy_service:
+  extends:
+    - .deploy_service
+    - .deploy_release_rules
+
+verify_e2e:
+  extends:
+    - .verify_e2e
+    - .deploy_release_rules
+
+rollback_deploy:
+  extends:
+    - .rollback_deploy
+    - .deploy_release_rules
