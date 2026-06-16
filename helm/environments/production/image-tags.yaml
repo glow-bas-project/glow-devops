@@ -5,7 +5,7 @@ microserviceImageTags:
   user: "36"
   order: "21"
   cart: "17"
-  courier: latest
+  courier: "27"
   menu: "15"
   payment: "22"
 ui:
